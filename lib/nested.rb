@@ -203,7 +203,9 @@ module Nested
     def angularize(resource)
       js = []
 
-      js << "angular.module('Nested-#{resource.name.to_s.gsub(/_/, '-')}', ['ngResource'])"
+      module_name = "nested_#{resource.name}".camelcase(:lower)
+
+      js << "angular.module('#{module_name}', ['ngResource'])"
       js << ".factory('#{resource.name.to_s.camelcase.capitalize}Service', function($http, $q){"
 
       js << "  var impl = {}"
@@ -229,7 +231,10 @@ module Nested
                         .reverse
 
         fun_name_arr << action if action
-        fun_name_arr << method
+        fun_name_arr << case method
+          when :delete then :destroy
+          else method
+        end
 
         fun_name_arr.map(&:to_s).join("_").camelcase(:lower)
     end

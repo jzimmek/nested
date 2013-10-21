@@ -311,6 +311,13 @@ class NestedTest < Test::Unit::TestCase
     member!
     assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
 
+    # delete -> destroy
+
+    singleton!
+    assert_equal "destroy", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+
+    # action
+
     singleton!
     assert_equal "myActionGet", Nested::JsUtil::generate_function_name(@r, :get, :my_action)
 
