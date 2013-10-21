@@ -275,7 +275,7 @@ class NestedTest < Test::Unit::TestCase
   end
 
   def test_create_sinatra_route
-    @sinatra.expects(:prefix).at_least_once.returns(nil)
+    @sinatra.expects(:nested_config).at_least_once.returns({})
 
     singleton!
 
@@ -329,7 +329,7 @@ class NestedTest < Test::Unit::TestCase
 
     singleton!
 
-    @sinatra.expects(:prefix).returns(nil)
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:get)
     @r2 = @r.singleton(:statistic) { get }
 
@@ -337,7 +337,7 @@ class NestedTest < Test::Unit::TestCase
 
     member!
 
-    @sinatra.expects(:prefix).returns(nil)
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:get)
     @r2 = @r.singleton(:statistic) { get }
 
@@ -345,7 +345,7 @@ class NestedTest < Test::Unit::TestCase
 
     collection!
 
-    @sinatra.expects(:prefix).returns(nil)
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:get)
     @r2 = @r.singleton(:statistic) { get }
 

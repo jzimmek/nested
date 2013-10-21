@@ -140,7 +140,7 @@ module Nested
 
       resource = self
 
-      puts "sinatra router [#{method}] #{@sinatra.prefix}#{resource.route}"
+      puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{resource.route}"
 
       @sinatra.send(method, resource.route) do
         content_type :json
@@ -152,7 +152,11 @@ module Nested
           instance_variable_set("@#{res.instance_variable_name}", resource_obj)
         end
 
-        case response = instance_exec(resource, &block)
+        response = instance_exec(resource, &block)
+
+        response = instance_variable_get("@#{resource.instance_variable_name}") if [:put, :delete].include?(method)
+
+        case response
           when String then  response
           else              response.to_json
         end
@@ -169,6 +173,15 @@ module Nested
       def create_resource(name, singleton, collection, &block)
         angularize(super)
       end
+
+      def nested_angular_config(config=nil)
+        if config
+          @nested_angular_config = config
+        else
+          @nested_angular_config ||= {}
+        end
+      end
+
     end
 
     def angular_add_functions(js, resource)
@@ -184,16 +197,21 @@ module Nested
           memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : values[#{idx}].id)+'"
           memo
         end
-        route = "#{self.prefix}" + resource.route(route_args)
+        route = "#{self.nested_config[:prefix]}" + resource.route(route_args)
+        when_args = args.map{|a| "$q.when(#{a})"}
 
         js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+        js << "    var deferred = $q.defer()"
+        js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
 
-        args = args.map{|a| "$q.when(#{a})"}
+        js << "      $http({method: '#{method}', url: '#{route}'})" #if [:get, :delete].include?(method)
+        # js << "      $http({method: '#{method}', url: '#{route}', data: })" if [:post, :put].include?(method)
 
-        js << "    return $q.all([#{args.join(',')}]).then(function(values){" unless args.empty?
-        js << (args.length > 1 ? "  " : "") + "    return $http({method: '#{method}', url: '#{route}'})"
-        js << "    });" unless args.empty?
+        js << "        .success(function(data){ deferred.resolve(data) })"
+        js << "        .error(function(){ deferred.reject() })"
 
+        js << "    });"
+        js << "    return deferred.promise"
         js << "  }"
       end
 
@@ -206,7 +224,7 @@ module Nested
       module_name = "nested_#{resource.name}".camelcase(:lower)
 
       js << "angular.module('#{module_name}', ['ngResource'])"
-      js << ".factory('#{resource.name.to_s.camelcase.capitalize}Service', function($http, $q){"
+      js << ".factory('#{resource.name.to_s.camelcase.capitalize}#{nested_angular_config[:service_suffix]}', function($http, $q){"
 
       js << "  var impl = {}"
       angular_add_functions(js, resource)
@@ -251,11 +269,11 @@ module Nested
   end
 
   module Sinatra
-    def prefix(prefix=nil)
-      if prefix
-        @prefix = prefix
+    def nested_config(config=nil)
+      if config
+        @nested_config = config
       else
-        @prefix
+        @nested_config ||= {}
       end
     end
     def singleton(name, &block)
