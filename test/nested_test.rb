@@ -82,6 +82,10 @@ class NestedTest < Test::Unit::TestCase
     assert_equal "/projects/:project_id", @r.route
     assert_equal "/projects/1", @r.route(project_id: 1)
 
+    member!
+    assert_equal "/projects/:project_id/myaction", @r.route({}, :myaction)
+    assert_equal "/projects/1/myaction", @r.route({project_id: 1}, :myaction)
+
     # --- singleton
 
     singleton!
@@ -124,7 +128,6 @@ class NestedTest < Test::Unit::TestCase
     @r2 = @r.one(:statistic) { }
     assert_equal "/projects/:project_id/statistics/:statistic_id", @r2.route
     assert_equal "/projects/1/statistics/2", @r2.route(project_id: 1, statistic_id: 2)
-
   end
 
 
@@ -279,21 +282,21 @@ class NestedTest < Test::Unit::TestCase
 
     singleton!
 
-    @sinatra.expects(:send).with(:get, @r.route)
+    @sinatra.expects(:send).with(:get, "/project")
     @r.create_sinatra_route(:get, nil) { }
-    assert_equal [{method: :get, actions: nil}], @r.actions
+    assert_equal [{method: :get, action: nil}], @r.actions
 
     singleton!
 
-    @sinatra.expects(:send).with(:post, @r.route)
+    @sinatra.expects(:send).with(:post, "/project")
     @r.create_sinatra_route(:post, nil) { }
-    assert_equal [{method: :post, actions: nil}], @r.actions
+    assert_equal [{method: :post, action: nil}], @r.actions
 
     singleton!
 
-    @sinatra.expects(:send).with(:post, @r.route)
+    @sinatra.expects(:send).with(:post, "/project/action")
     @r.create_sinatra_route(:post, :action) { }
-    assert_equal [{method: :post, actions: :action}], @r.actions
+    assert_equal [{method: :post, action: :action}], @r.actions
   end
 
   # ----
@@ -304,17 +307,21 @@ class NestedTest < Test::Unit::TestCase
   def test_function_name
     singleton!
     assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
 
     collection!
     assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
 
     member!
     assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
 
     # delete -> destroy
 
     singleton!
     assert_equal "destroy", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+    assert_equal "actionDestroy", Nested::JsUtil::generate_function_name(@r, :delete, :action)
 
     # action
 

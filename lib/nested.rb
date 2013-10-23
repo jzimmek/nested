@@ -1,3 +1,5 @@
+require "json"
+
 module Nested
 
   class OneWithNameInManyError < StandardError
@@ -59,7 +61,7 @@ module Nested
       (@__fetch || FETCH).call(self, ctrl)
     end
 
-    def route(args={})
+    def route(args={}, action=nil)
       "".tap do |r|
         r << @parent.route(args) if @parent
 
@@ -80,16 +82,18 @@ module Nested
             r << ":#{key}"
           end
         end
+
+        r << "/#{action}" if action
       end
     end
 
     def get(action=nil, &block)
-      create_sinatra_route :get, action, &(block || get_default)
+      create_sinatra_route :get, action, &block
     end
 
-    def get_default
-      ->(resource) { instance_variable_get("@#{resource.instance_variable_name}") }
-    end
+    # def get_default
+    #   ->(resource) { instance_variable_get("@#{resource.instance_variable_name}") }
+    # end
 
     def post(action=nil, &block)
       create_sinatra_route :post, action, &block
@@ -136,13 +140,14 @@ module Nested
     end
 
     def create_sinatra_route(method, action, &block)
-      @actions << {method: method, actions: action}
+      @actions << {method: method, action: action}
 
       resource = self
 
-      puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{resource.route}"
+      route = resource.route({}, action)
+      puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{route}"
 
-      @sinatra.send(method, resource.route) do
+      @sinatra.send(method, route) do
         content_type :json
 
         resource.self_and_parents.reverse.each do |res|
@@ -152,9 +157,23 @@ module Nested
           instance_variable_set("@#{res.instance_variable_name}", resource_obj)
         end
 
-        response = instance_exec(resource, &block)
+        response = if :get == method
+          instance_exec(&(block || -> { instance_variable_get("@#{resource.instance_variable_name}") }))
+        elsif :delete == method
+          instance_exec(&block)
+          instance_variable_get("@#{resource.instance_variable_name}")
+        elsif [:put, :post].include?(method)
+          request.body.rewind
+          data = HashWithIndifferentAccess.new JSON.parse(request.body.read)
 
-        response = instance_variable_get("@#{resource.instance_variable_name}") if [:put, :delete].include?(method)
+          response = instance_exec(data, &block)
+
+          if method == :put
+            instance_variable_get("@#{resource.instance_variable_name}")
+          else
+            response
+          end
+        end
 
         case response
           when String then  response
@@ -197,22 +216,42 @@ module Nested
           memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : values[#{idx}].id)+'"
           memo
         end
-        route = "#{self.nested_config[:prefix]}" + resource.route(route_args)
+        route = "#{self.nested_config[:prefix]}" + resource.route(route_args, action)
         when_args = args.map{|a| "$q.when(#{a})"}
 
-        js << "  impl.#{fun_name} = function(#{args.join(',')}){"
-        js << "    var deferred = $q.defer()"
-        js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+        if [:get, :delete].include?(method)
+          js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+          js << "    var deferred = $q.defer()"
+          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+          js << "      $http({method: '#{method}', url: '#{route}'})"
+          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .error(function(){ deferred.reject() })"
+          js << "    });"
+          js << "    return deferred.promise"
+          js << "  }"
+        elsif method == :post
+          js << "  impl.#{fun_name} = function(#{(args+['data']).join(',')}){"
+          js << "    var deferred = $q.defer()"
+          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+          js << "      $http({method: '#{method}', url: '#{route}', data: data})"
+          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .error(function(){ deferred.reject() })"
+          js << "    });"
+          js << "    return deferred.promise"
+          js << "  }"
+        elsif method == :put
+          args << "data" if args.empty?
 
-        js << "      $http({method: '#{method}', url: '#{route}'})" #if [:get, :delete].include?(method)
-        # js << "      $http({method: '#{method}', url: '#{route}', data: })" if [:post, :put].include?(method)
-
-        js << "        .success(function(data){ deferred.resolve(data) })"
-        js << "        .error(function(){ deferred.reject() })"
-
-        js << "    });"
-        js << "    return deferred.promise"
-        js << "  }"
+          js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+          js << "    var deferred = $q.defer()"
+          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+          js << "      $http({method: '#{method}', url: '#{route}', data: #{args.last}})"
+          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .error(function(){ deferred.reject() })"
+          js << "    });"
+          js << "    return deferred.promise"
+          js << "  }"
+        end
       end
 
       resource.resources.each {|r| angular_add_functions(js, r) }
