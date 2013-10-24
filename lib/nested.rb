@@ -176,12 +176,12 @@ module Nested
         end
 
         if [:get, :delete].include?(method)
-          instance_exec(&block)
+          instance_exec(resource, &block)
         else [:put, :post].include?(method)
           request.body.rewind
           data = HashWithIndifferentAccess.new JSON.parse(request.body.read)
-          instance_exec(data, &block) if method == :put
-          instance_variable_set("@#{resource.instance_variable_name}", instance_exec(data, &block)) if method == :post
+          instance_exec(data, resource, &block) if method == :put
+          instance_variable_set("@#{resource.instance_variable_name}", instance_exec(data, resource, &block)) if method == :post
         end
 
         response = instance_variable_get("@#{resource.instance_variable_name}")
