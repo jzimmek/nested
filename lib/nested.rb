@@ -11,7 +11,14 @@ module Nested
   class SingletonAndCollectionError < StandardError
   end
 
+  class NameMissingError < StandardError
+  end
+
   class Resource
+    SERIALIZE = ->(obj, ctrl, resource) do
+      obj
+    end
+
     FETCH =  ->(resource, ctrl) do
       raise "implement fetch for resource #{resource.name}"  unless resource.parent
       raise "implement fetch for singleton #{resource.name}" if resource.singleton?
@@ -31,6 +38,7 @@ module Nested
 
     def initialize(sinatra, name, singleton, collection, parent)
       raise SingletonAndCollectionError.new if singleton && collection
+      raise NameMissingError.new if (singleton || collection) && !name
 
       @sinatra = sinatra
       @name = name
@@ -55,6 +63,14 @@ module Nested
 
     def fetch(&block)
       @__fetch = block
+    end
+
+    def serialize(&block)
+      @__serialize = block
+    end
+
+    def serialize_object(obj, ctrl)
+      (@__serialize || SERIALIZE).call(obj, ctrl, self)
     end
 
     def fetch_object(ctrl)
@@ -88,12 +104,8 @@ module Nested
     end
 
     def get(action=nil, &block)
-      create_sinatra_route :get, action, &block
+      create_sinatra_route :get, action, &(block||proc {})
     end
-
-    # def get_default
-    #   ->(resource) { instance_variable_get("@#{resource.instance_variable_name}") }
-    # end
 
     def post(action=nil, &block)
       create_sinatra_route :post, action, &block
@@ -128,7 +140,13 @@ module Nested
     end
 
     def instance_variable_name
-      @name.to_s.send(collection? ? :pluralize : :singularize).to_sym
+      if @name
+        @name.to_s.send(collection? ? :pluralize : :singularize).to_sym
+      elsif member? && @parent
+        @parent.name.to_s.singularize.to_sym
+      else
+        nil
+      end
     end
 
     def parents
@@ -157,22 +175,34 @@ module Nested
           instance_variable_set("@#{res.instance_variable_name}", resource_obj)
         end
 
-        response = if :get == method
-          instance_exec(&(block || -> { instance_variable_get("@#{resource.instance_variable_name}") }))
-        elsif :delete == method
+        if [:get, :delete].include?(method)
           instance_exec(&block)
-          instance_variable_get("@#{resource.instance_variable_name}")
-        elsif [:put, :post].include?(method)
+        else [:put, :post].include?(method)
           request.body.rewind
           data = HashWithIndifferentAccess.new JSON.parse(request.body.read)
+          instance_exec(data, &block) if method == :put
+          instance_variable_set("@#{resource.instance_variable_name}", instance_exec(data, &block)) if method == :post
+        end
 
-          response = instance_exec(data, &block)
+        response = instance_variable_get("@#{resource.instance_variable_name}")
 
-          if method == :put
-            instance_variable_get("@#{resource.instance_variable_name}")
-          else
-            response
+        if response.is_a?(ActiveModel::Errors) || response.respond_to?(:errors) && !response.errors.empty?
+          errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
+
+          data = errors.to_hash.inject({}) do |memo, e|
+            memo[e[0]] = e[1][0]
+            memo
           end
+
+          response = {data: data, ok: false}
+        else
+          data = if response.respond_to?(:to_a)
+            response.to_a.map{|e| resource.serialize_object(e, self)}
+          else
+            resource.serialize_object(response, self)
+          end
+
+          response = {data: data, ok: true}
         end
 
         case response
@@ -224,7 +254,9 @@ module Nested
           js << "    var deferred = $q.defer()"
           js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
           js << "      $http({method: '#{method}', url: '#{route}'})"
-          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .success(function(responseData){"
+          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+          js << "        })"
           js << "        .error(function(){ deferred.reject() })"
           js << "    });"
           js << "    return deferred.promise"
@@ -234,7 +266,9 @@ module Nested
           js << "    var deferred = $q.defer()"
           js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
           js << "      $http({method: '#{method}', url: '#{route}', data: data})"
-          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .success(function(responseData){"
+          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+          js << "        })"
           js << "        .error(function(){ deferred.reject() })"
           js << "    });"
           js << "    return deferred.promise"
@@ -246,7 +280,9 @@ module Nested
           js << "    var deferred = $q.defer()"
           js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
           js << "      $http({method: '#{method}', url: '#{route}', data: #{args.last}})"
-          js << "        .success(function(responseData){ deferred.resolve(responseData) })"
+          js << "        .success(function(responseData){"
+          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+          js << "        })"
           js << "        .error(function(){ deferred.reject() })"
           js << "    });"
           js << "    return deferred.promise"
@@ -280,24 +316,44 @@ module Nested
 
   module JsUtil
     def self.generate_function_name(resource, method, action)
-        arr = resource.self_and_parents
+      arr = []
 
-        fun_name_arr = arr
-                        .reject{|r| r == arr.last }
-                        .map{|r| r.name || :one}
-                        .reverse
+      arr << "update" if method == :put
+      arr << "create" if method == :post
+      arr << "destroy" if method == :delete
 
-        fun_name_arr << action if action
-        fun_name_arr << case method
-          when :delete then :destroy
-          else method
+      parents = resource.parents
+      parents.each_with_index do |p, idx|
+        if p.collection? && method != :post && ((parents[idx + 1] && parents[idx + 1].singleton?) || parents.last == p)
+          arr << p.name.to_s.send(:pluralize)
+        else
+          arr << p.name.to_s.send(:singularize)
         end
+      end
 
-        fun_name_arr.map(&:to_s).join("_").camelcase(:lower)
+      if resource.member?
+        if resource.parent
+          arr = arr.slice(0...-1)
+          arr << resource.parent.name.to_s.send(:singularize)
+        else
+          arr << resource.name.to_s.send(:singularize)
+        end
+      elsif resource.singleton?
+        arr << resource.name.to_s.send(:singularize)
+      elsif resource.collection?
+        if method == :post
+          arr << resource.name.to_s.send(:singularize)
+        else
+          arr << resource.name.to_s.send(:pluralize)
+        end
+      end
+
+      arr << action if action
+
+      arr.map(&:to_s).join("_").camelcase(:lower)
     end
 
     def self.function_arguments(resource)
-
       resource
         .self_and_parents.select{|r| r.member?}
         .map{|r| r.name || r.parent.name}

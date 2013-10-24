@@ -21,6 +21,16 @@ class NestedTest < Test::Unit::TestCase
     @sinatra = mock
   end
 
+  def test_initialize_name
+    assert_raise Nested::NameMissingError do
+      Nested::Resource.new({}, nil, true, false, nil)
+    end
+
+    assert_raise Nested::NameMissingError do
+      Nested::Resource.new({}, nil, false, true, nil)
+    end
+  end
+
   def test_is_singleton
     singleton!
     assert_equal true, @r.singleton?
@@ -57,6 +67,15 @@ class NestedTest < Test::Unit::TestCase
     assert_equal(fetch, @r.instance_variable_get("@__fetch"))
   end
 
+  def test_serialize
+    singleton!
+
+    serialize = -> { }
+    @r.serialize &serialize
+
+    assert_equal(serialize, @r.instance_variable_get("@__serialize"))
+  end
+
   def test_fetch_object
     singleton!
 
@@ -68,6 +87,19 @@ class NestedTest < Test::Unit::TestCase
 
     fetch.expects(:call).with(@r, {})
     @r.fetch_object({})
+  end
+
+  def test_serialize_object
+    singleton!
+
+    Nested::Resource::SERIALIZE.expects(:call).with({name: :joe}, {}, @r)
+    @r.serialize_object({name: :joe}, {})
+
+    serialize = -> { }
+    @r.serialize &serialize
+
+    serialize.expects(:call).with({name: :joe}, {}, @r)
+    @r.serialize_object({name: :joe}, {})
   end
 
   def test_route
@@ -253,6 +285,10 @@ class NestedTest < Test::Unit::TestCase
 
     collection!
     assert_equal :projects, @r.instance_variable_name
+
+    collection!
+    r2 = @r.one {}
+    assert_equal :project, r2.instance_variable_name
   end
 
   def test_parents
@@ -302,61 +338,118 @@ class NestedTest < Test::Unit::TestCase
   # ----
 
 
-
-
   def test_function_name
     singleton!
-    assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "project", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "updateProject", Nested::JsUtil::generate_function_name(@r, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
+    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+
+    assert_equal "projectAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
+    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
 
     collection!
-    assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "projects", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "updateProjects", Nested::JsUtil::generate_function_name(@r, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
+    assert_equal "destroyProjects", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+
+    assert_equal "projectsAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "updateProjectsAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
+    assert_equal "destroyProjectsAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
 
     member!
-    assert_equal "get", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "actionGet", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "project", Nested::JsUtil::generate_function_name(@r, :get, nil)
+    assert_equal "updateProject", Nested::JsUtil::generate_function_name(@r, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
+    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(@r, :delete, nil)
 
-    # delete -> destroy
+    assert_equal "projectAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
+    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
+    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
+
+
+    # with parent
 
     singleton!
-    assert_equal "destroy", Nested::JsUtil::generate_function_name(@r, :delete, nil)
-    assert_equal "actionDestroy", Nested::JsUtil::generate_function_name(@r, :delete, :action)
 
-    # action
+    r2 = @r.singleton(:statistic) {}
 
-    singleton!
-    assert_equal "myActionGet", Nested::JsUtil::generate_function_name(@r, :get, :my_action)
+    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
+    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
+    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
+
+    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
+    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
+    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
+
+    member!
+
+    r2 = @r.singleton(:statistic) {}
+
+    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
+    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
+    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
+
+    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
+    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
+    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
 
     collection!
-    assert_equal "myActionGet", Nested::JsUtil::generate_function_name(@r, :get, :my_action)
 
-    member!
-    assert_equal "myActionGet", Nested::JsUtil::generate_function_name(@r, :get, :my_action)
+    r2 = @r.singleton(:statistic) {}
+
+    assert_equal "projectsStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
+    assert_equal "updateProjectsStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
+    assert_equal "destroyProjectsStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
+
+    assert_equal "projectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
+    assert_equal "updateProjectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
+    assert_equal "destroyProjectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
 
     singleton!
 
-    @sinatra.expects(:nested_config).returns({})
-    @sinatra.expects(:get)
-    @r2 = @r.singleton(:statistic) { get }
+    r2 = @r.many(:statistics) {}
+    r3 = r2.one {}
 
-    assert_equal "statisticGet", Nested::JsUtil::generate_function_name(@r2, :get, nil)
+    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r3, :get, nil)
+    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r3, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r3, :post, nil)
+    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r3, :delete, nil)
 
-    member!
+    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r3, :get, :action)
+    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :post, :action)
+    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :delete, :action)
 
-    @sinatra.expects(:nested_config).returns({})
-    @sinatra.expects(:get)
-    @r2 = @r.singleton(:statistic) { get }
 
-    assert_equal "statisticGet", Nested::JsUtil::generate_function_name(@r2, :get, nil)
+    singleton!
+    r2 = @r.many(:statistics) {}
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
 
-    collection!
 
-    @sinatra.expects(:nested_config).returns({})
-    @sinatra.expects(:get)
-    @r2 = @r.singleton(:statistic) { get }
+    singleton!
+    r2 = @r.many(:statistics) {}
+    r3 = r2.singleton(:user) {}
 
-    assert_equal "statisticGet", Nested::JsUtil::generate_function_name(@r2, :get, nil)
+    assert_equal "projectStatisticsUser", Nested::JsUtil::generate_function_name(r3, :get, nil)
+
+    singleton!
+    r2 = @r.many(:statistics) {}
+    r3 = r2.one {}
+    r4 = r3.singleton(:user) {}
+
+    assert_equal "projectStatisticUser", Nested::JsUtil::generate_function_name(r4, :get, nil)
   end
 
   # -----------------
