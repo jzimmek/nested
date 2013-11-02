@@ -61,21 +61,10 @@ module Nested
       @collection == true
     end
 
-    def fetch(&block)
-      @__fetch = block
-    end
-
-    def serialize(&block)
-      @__serialize = block
-    end
-
-    def serialize_object(obj, ctrl)
-      (@__serialize || SERIALIZE).call(obj, ctrl, self)
-    end
-
-    def fetch_object(ctrl)
-      (@__fetch || FETCH).call(self, ctrl)
-    end
+    def before_fetch(&block);   @__before_fetch = block;  end
+    def fetch(&block);          @__fetch        = block;  end
+    def after_fetch(&block);    @__after_fetch  = block;  end
+    def serialize(&block);      @__serialize    = block;  end
 
     def route(args={}, action=nil)
       "".tap do |r|
@@ -157,6 +146,85 @@ module Nested
       (self.parents + [self]).reverse
     end
 
+    def fetcher
+      @__fetch || FETCH
+    end
+
+    def serializer
+      @__serialize || SERIALIZE
+    end
+
+    # --------------------------
+
+    def sinatra_init(sinatra)
+      @__before_fetch.call(self, sinatra) if @__before_fetch
+      resource_obj = fetcher.call(self, sinatra)
+
+      puts "set @#{self.instance_variable_name} to #{resource_obj.inspect} for #{sinatra}"
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", resource_obj)
+
+      @__after_fetch.call(self, sinatra) if @__after_fetch
+    end
+
+    def sinatra_exec_get_block(sinatra, &block)
+      sinatra.instance_exec(self, &block)
+    end
+
+    def sinatra_exec_delete_block(sinatra, &block)
+      sinatra.instance_exec(self, &block)
+    end
+
+    def sinatra_read_json_body(sinatra)
+      sinatra.request.body.rewind
+      HashWithIndifferentAccess.new JSON.parse(sinatra.request.body.read)
+    end
+
+    def sinatra_exec_put_block(sinatra, &block)
+      data = sinatra_read_json_body(sinatra)
+      instance_exec(data, self, &block)
+    end
+
+    def sinatra_exec_post_block(sinatra, &block)
+      data = sinatra_read_json_body(sinatra)
+      res = instance_exec(data, self, &block)
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
+    end
+
+    def sinatra_response_type(response)
+      (response.is_a?(ActiveModel::Errors) || (response.respond_to?(:errors) && !response.errors.empty?)) ? :error : :data
+    end
+
+    def sinatra_response(sinatra)
+      response = sinatra.instance_variable_get("@#{self.instance_variable_name}")
+      response = self.send(:"sinatra_response_create_#{sinatra_response_type(response)}", sinatra, response)
+
+      case response
+        when String then  response
+        else              response.to_json
+      end
+    end
+
+    def sinatra_response_create_data(sinatra, response)
+      data = if response.respond_to?(:to_a)
+        response.to_a.map{|e| serializer.call(e, sinatra, self)}
+      else
+        serializer(response, sinatra, self)
+      end
+
+      {data: data, ok: true}
+    end
+
+    def sinatra_response_create_error(sinatra, response)
+      errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
+
+      data = errors.to_hash.inject({}) do |memo, e|
+        memo[e[0]] = e[1][0]
+        memo
+      end
+
+      {data: data, ok: false}
+    end
+
     def create_sinatra_route(method, action, &block)
       @actions << {method: method, action: action}
 
@@ -169,46 +237,12 @@ module Nested
         content_type :json
 
         resource.self_and_parents.reverse.each do |res|
-          resource_obj = res.fetch_object(self)
-
-          puts "set @#{res.instance_variable_name} to #{resource_obj.inspect} for #{self}"
-          instance_variable_set("@#{res.instance_variable_name}", resource_obj)
+          res.sinatra_init(self)
         end
 
-        if [:get, :delete].include?(method)
-          instance_exec(resource, &block)
-        else [:put, :post].include?(method)
-          request.body.rewind
-          data = HashWithIndifferentAccess.new JSON.parse(request.body.read)
-          instance_exec(data, resource, &block) if method == :put
-          instance_variable_set("@#{resource.instance_variable_name}", instance_exec(data, resource, &block)) if method == :post
-        end
+        resource.send(:"sinatra_exec_#{method}_block", self, &block)
 
-        response = instance_variable_get("@#{resource.instance_variable_name}")
-
-        if response.is_a?(ActiveModel::Errors) || response.respond_to?(:errors) && !response.errors.empty?
-          errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
-
-          data = errors.to_hash.inject({}) do |memo, e|
-            memo[e[0]] = e[1][0]
-            memo
-          end
-
-          response = {data: data, ok: false}
-        else
-          data = if response.respond_to?(:to_a)
-            response.to_a.map{|e| resource.serialize_object(e, self)}
-          else
-            resource.serialize_object(response, self)
-          end
-
-          response = {data: data, ok: true}
-        end
-
-        case response
-          when String then  response
-          else              response.to_json
-        end
+        resource.sinatra_response(self)
       end
     end
   end

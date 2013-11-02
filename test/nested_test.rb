@@ -1,6 +1,7 @@
 require "test/unit"
 require "mocha/setup"
 require "active_support/all"
+require "active_model/errors"
 require "nested"
 
 class NestedTest < Test::Unit::TestCase
@@ -76,31 +77,31 @@ class NestedTest < Test::Unit::TestCase
     assert_equal(serialize, @r.instance_variable_get("@__serialize"))
   end
 
-  def test_fetch_object
-    singleton!
+  # def test_fetch_object
+  #   singleton!
 
-    Nested::Resource::FETCH.expects(:call).with(@r, {})
-    @r.fetch_object({})
+  #   Nested::Resource::FETCH.expects(:call).with(@r, {})
+  #   @r.fetch_object({})
 
-    fetch = -> { }
-    @r.fetch &fetch
+  #   fetch = -> { }
+  #   @r.fetch &fetch
 
-    fetch.expects(:call).with(@r, {})
-    @r.fetch_object({})
-  end
+  #   fetch.expects(:call).with(@r, {})
+  #   @r.fetch_object({})
+  # end
 
-  def test_serialize_object
-    singleton!
+  # def test_serialize_object
+  #   singleton!
 
-    Nested::Resource::SERIALIZE.expects(:call).with({name: :joe}, {}, @r)
-    @r.serialize_object({name: :joe}, {})
+  #   Nested::Resource::SERIALIZE.expects(:call).with({name: :joe}, {}, @r)
+  #   @r.serialize_object({name: :joe}, {})
 
-    serialize = -> { }
-    @r.serialize &serialize
+  #   serialize = -> { }
+  #   @r.serialize &serialize
 
-    serialize.expects(:call).with({name: :joe}, {}, @r)
-    @r.serialize_object({name: :joe}, {})
-  end
+  #   serialize.expects(:call).with({name: :joe}, {}, @r)
+  #   @r.serialize_object({name: :joe}, {})
+  # end
 
   def test_route
     # no parent
@@ -334,6 +335,37 @@ class NestedTest < Test::Unit::TestCase
     @r.create_sinatra_route(:post, :action) { }
     assert_equal [{method: :post, action: :action}], @r.actions
   end
+
+  def test_fetcher
+    singleton!
+    assert_equal(@r.fetcher, Nested::Resource::FETCH)
+    @r.instance_variable_set("@__fetch", 123)
+    assert_equal(@r.fetcher, 123)
+  end
+
+  def test_serializer
+    singleton!
+    assert_equal(@r.serializer, Nested::Resource::SERIALIZE)
+    @r.instance_variable_set("@__serialize", 123)
+    assert_equal(@r.serializer, 123)
+  end
+
+  # ----
+
+  def test_sinatra_response_type
+    singleton!
+    assert_equal :error, @r.sinatra_response_type(ActiveModel::Errors.new({}))
+
+    obj = OpenStruct.new(errors: ActiveModel::Errors.new({}))
+    assert_equal :data, @r.sinatra_response_type(obj)
+
+    obj.errors.add(:somefield, "some error")
+    assert_equal :error, @r.sinatra_response_type(obj)
+
+    assert_equal :data, @r.sinatra_response_type(nil)
+    assert_equal :data, @r.sinatra_response_type(123)
+  end
+
 
   # ----
 
