@@ -181,12 +181,12 @@ module Nested
 
     def sinatra_exec_put_block(sinatra, &block)
       data = sinatra_read_json_body(sinatra)
-      instance_exec(data, self, &block)
+      sinatra.instance_exec(data, self, &block)
     end
 
     def sinatra_exec_post_block(sinatra, &block)
       data = sinatra_read_json_body(sinatra)
-      res = instance_exec(data, self, &block)
+      res = sinatra.instance_exec(data, self, &block)
       sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
     end
 
