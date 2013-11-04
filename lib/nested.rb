@@ -208,7 +208,7 @@ module Nested
       data = if response.respond_to?(:to_a)
         response.to_a.map{|e| serializer.call(e, sinatra, self)}
       else
-        serializer(response, sinatra, self)
+        serializer.call(response, sinatra, self)
       end
 
       {data: data, ok: true}
