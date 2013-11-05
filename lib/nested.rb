@@ -15,18 +15,18 @@ module Nested
   end
 
   class Resource
-    FETCH =  ->(resource, ctrl) do
-      raise "implement fetch for resource #{resource.name}"  unless resource.parent
-      raise "implement fetch for singleton #{resource.name}" if resource.singleton?
+    FETCH = -> do
+      raise "implement fetch for resource #{@__resource.name}"  unless @__resource.parent
+      raise "implement fetch for singleton #{@__resource.name}" if @__resource.singleton?
 
-      parent_resource = resource.parent
-      parent_obj = ctrl.instance_variable_get("@#{parent_resource.instance_variable_name}")
+      parent_resource = @__resource.parent
+      parent_obj = instance_variable_get("@#{parent_resource.instance_variable_name}")
 
-      if resource.name
-        scope = parent_obj.send(resource.name.to_s.pluralize.to_sym)
-        resource.collection? ? scope : scope.where(id: ctrl.params["#{resource.name.to_s.singularize}_id"]).first
+      if @__resource.name
+        scope = parent_obj.send(@__resource.name.to_s.pluralize.to_sym)
+        @__resource.collection? ? scope : scope.where(id: params["#{@__resource.name.to_s.singularize}_id"]).first
       else
-        parent_obj.where(id: ctrl.params["#{parent_resource.name.to_s.singularize}_id"]).first
+        parent_obj.where(id: params["#{parent_resource.name.to_s.singularize}_id"]).first
       end
     end
 
@@ -44,14 +44,14 @@ module Nested
       @resources = []
       @actions = []
 
-      init &->(resource) do
-        fetched = FETCH.call(resource, self)
+      init &-> do
+        fetched = instance_exec(&FETCH)
 
-        puts "set @#{resource.instance_variable_name} to #{fetched.inspect} for #{self}"
-        self.instance_variable_set("@#{resource.instance_variable_name}", fetched)
+        puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
+        self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
       end
 
-      serialize &->(obj, resource) do
+      serialize &->(obj) do
         obj
       end
     end
@@ -71,8 +71,8 @@ module Nested
     def serialize(*args, &block)
       raise "pass either *args or &block" if args.empty? && !block
 
-      @__serialize = ->(obj, resource) do
-        obj = self.instance_exec(obj, resource, &block) if block
+      @__serialize = ->(obj) do
+        obj = self.instance_exec(obj, &block) if block
         obj = obj.attributes if obj.is_a?(ActiveRecord::Base)
         obj = obj.symbolize_keys.slice(*args) unless args.empty?
         obj
@@ -166,30 +166,32 @@ module Nested
     # --------------------------
 
     def sinatra_init(sinatra)
-      sinatra.instance_exec(self, &@__init)
+      sinatra.instance_variable_set("@__resource", self)
+      sinatra.instance_exec(&@__init)
     end
 
     def sinatra_exec_get_block(sinatra, &block)
-      sinatra.instance_exec(self, &block)
+      sinatra.instance_exec(&block)
     end
 
     def sinatra_exec_delete_block(sinatra, &block)
-      sinatra.instance_exec(self, &block)
+      sinatra.instance_exec(&block)
     end
 
-    def sinatra_read_json_body(sinatra)
+    def sinatra_init_data(sinatra, &block)
       sinatra.request.body.rewind
-      HashWithIndifferentAccess.new JSON.parse(sinatra.request.body.read)
+      @__raw_data = HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
+      @__data = @__raw_data.values_at(*block.parameters.map(&:last))
     end
 
     def sinatra_exec_put_block(sinatra, &block)
-      data = sinatra_read_json_body(sinatra)
-      sinatra.instance_exec(data, self, &block)
+      sinatra_init_data(sinatra, &block)
+      sinatra.instance_exec(*@__data, &block)
     end
 
     def sinatra_exec_post_block(sinatra, &block)
-      data = sinatra_read_json_body(sinatra)
-      res = sinatra.instance_exec(data, self, &block)
+      sinatra_init_data(sinatra, &block)
+      res = sinatra.instance_exec(*@__data, &block)
       sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
     end
 
@@ -209,9 +211,9 @@ module Nested
 
     def sinatra_response_create_data(sinatra, response)
       data = if response && collection?
-        response.to_a.map{|e| sinatra.instance_exec(e, self, &@__serialize) }
+        response.to_a.map{|e| sinatra.instance_exec(e, &@__serialize) }
       else
-        sinatra.instance_exec(response, self, &@__serialize)
+        sinatra.instance_exec(response, &@__serialize)
       end
 
       {data: data, ok: true}
