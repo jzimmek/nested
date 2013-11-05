@@ -74,7 +74,7 @@ class NestedTest < Test::Unit::TestCase
 
     @r.serialize :name
 
-    assert_equal({name: :joe}, @r.instance_variable_get("@__serialize").call({name: :joe, test: true}, {}))
+    assert_equal({name: :joe}, @r.instance_variable_get("@__serialize").call({name: :joe, test: true}))
   end
 
   def test_route
@@ -314,10 +314,10 @@ class NestedTest < Test::Unit::TestCase
     singleton!
     # assert_equal(@r.serializer, Nested::Resource::SERIALIZE)
 
-    ser = ->(obj, resource) { [obj, resource] }
+    ser = ->(obj) { obj }
     @r.serialize &ser
 
-    assert_equal [1, @r], @r.instance_variable_get("@__serialize").call(1, @r)
+    assert_equal 1, @r.instance_variable_get("@__serialize").call(1)
   end
 
   # ----
