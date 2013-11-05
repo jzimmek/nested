@@ -2,6 +2,7 @@ require "test/unit"
 require "mocha/setup"
 require "active_support/all"
 require "active_model/errors"
+require "active_record"
 require "nested"
 
 class NestedTest < Test::Unit::TestCase
@@ -59,49 +60,22 @@ class NestedTest < Test::Unit::TestCase
     assert_equal false, @r.member?
   end
 
-  def test_fetch
+  def test_init
     singleton!
 
-    fetch = -> { }
-    @r.fetch &fetch
+    init = -> { }
+    @r.init &init
 
-    assert_equal(fetch, @r.instance_variable_get("@__fetch"))
+    assert_equal init, @r.instance_variable_get("@__init")
   end
 
   def test_serialize
     singleton!
 
-    serialize = -> { }
-    @r.serialize &serialize
+    @r.serialize :name
 
-    assert_equal(serialize, @r.instance_variable_get("@__serialize"))
+    assert_equal({name: :joe}, @r.instance_variable_get("@__serialize").call({name: :joe, test: true}, {}, {}))
   end
-
-  # def test_fetch_object
-  #   singleton!
-
-  #   Nested::Resource::FETCH.expects(:call).with(@r, {})
-  #   @r.fetch_object({})
-
-  #   fetch = -> { }
-  #   @r.fetch &fetch
-
-  #   fetch.expects(:call).with(@r, {})
-  #   @r.fetch_object({})
-  # end
-
-  # def test_serialize_object
-  #   singleton!
-
-  #   Nested::Resource::SERIALIZE.expects(:call).with({name: :joe}, {}, @r)
-  #   @r.serialize_object({name: :joe}, {})
-
-  #   serialize = -> { }
-  #   @r.serialize &serialize
-
-  #   serialize.expects(:call).with({name: :joe}, {}, @r)
-  #   @r.serialize_object({name: :joe}, {})
-  # end
 
   def test_route
     # no parent
@@ -334,13 +308,6 @@ class NestedTest < Test::Unit::TestCase
     @sinatra.expects(:send).with(:post, "/project/action")
     @r.create_sinatra_route(:post, :action) { }
     assert_equal [{method: :post, action: :action}], @r.actions
-  end
-
-  def test_fetcher
-    singleton!
-    assert_equal(@r.fetcher, Nested::Resource::FETCH)
-    @r.instance_variable_set("@__fetch", 123)
-    assert_equal(@r.fetcher, 123)
   end
 
   def test_serializer

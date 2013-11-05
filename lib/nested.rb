@@ -15,7 +15,7 @@ module Nested
   end
 
   class Resource
-    SERIALIZE = ->(obj, ctrl, resource) do
+    SERIALIZE = ->(obj, sinatra, resource) do
       obj
     end
 
@@ -47,6 +47,13 @@ module Nested
       @parent = parent
       @resources = []
       @actions = []
+
+      @__init = ->(resource) do
+        fetched = FETCH.call(resource, self)
+
+        puts "set @#{resource.instance_variable_name} to #{fetched.inspect} for #{self}"
+        self.instance_variable_set("@#{resource.instance_variable_name}", fetched)
+      end
     end
 
     def singleton?
@@ -61,10 +68,36 @@ module Nested
       @collection == true
     end
 
-    def before_fetch(&block);   @__before_fetch = block;  end
-    def fetch(&block);          @__fetch        = block;  end
-    def after_fetch(&block);    @__after_fetch  = block;  end
-    def serialize(&block);      @__serialize    = block;  end
+    def serialize(*args, &block)
+      raise "pass either *args or &block" if args.empty? && !block
+
+      @__serialize = ->(obj, sinatra, resource) do
+        obj = block.call(obj) if block
+        obj = obj.attributes if obj.is_a?(ActiveRecord::Base)
+        obj = obj.symbolize_keys.slice(*args) unless args.empty?
+        obj
+      end
+
+
+
+      # if block && !args.empty?
+      #   @__serialize = ->(obj, sinatra, resource) do
+      #     block.call(obj).attributes.symbolize_keys.slice(*args)
+      #   end
+      # elsif block && args.empty?
+      #   @__serialize = block
+      # elsif !block && !args.empty?
+      #   @__serialize = ->(obj, sinatra, resource) do
+      #     obj.attributes.symbolize_keys.slice(*args)
+      #   end
+      # else
+      #   raise "pass either *args or &block"
+      # end
+    end
+
+    def init(&block)
+      @__init = block
+    end
 
     def route(args={}, action=nil)
       "".tap do |r|
@@ -146,10 +179,6 @@ module Nested
       (self.parents + [self]).reverse
     end
 
-    def fetcher
-      @__fetch || FETCH
-    end
-
     def serializer
       @__serialize || SERIALIZE
     end
@@ -157,13 +186,7 @@ module Nested
     # --------------------------
 
     def sinatra_init(sinatra)
-      @__before_fetch.call(self, sinatra) if @__before_fetch
-      resource_obj = fetcher.call(self, sinatra)
-
-      puts "set @#{self.instance_variable_name} to #{resource_obj.inspect} for #{sinatra}"
-      sinatra.instance_variable_set("@#{self.instance_variable_name}", resource_obj)
-
-      @__after_fetch.call(self, sinatra) if @__after_fetch
+      sinatra.instance_exec(self, &@__init)
     end
 
     def sinatra_exec_get_block(sinatra, &block)
