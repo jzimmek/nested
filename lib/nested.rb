@@ -15,10 +15,6 @@ module Nested
   end
 
   class Resource
-    SERIALIZE = ->(obj, sinatra, resource) do
-      obj
-    end
-
     FETCH =  ->(resource, ctrl) do
       raise "implement fetch for resource #{resource.name}"  unless resource.parent
       raise "implement fetch for singleton #{resource.name}" if resource.singleton?
@@ -48,11 +44,15 @@ module Nested
       @resources = []
       @actions = []
 
-      @__init = ->(resource) do
+      init &->(resource) do
         fetched = FETCH.call(resource, self)
 
         puts "set @#{resource.instance_variable_name} to #{fetched.inspect} for #{self}"
         self.instance_variable_set("@#{resource.instance_variable_name}", fetched)
+      end
+
+      serialize &->(obj, resource) do
+        obj
       end
     end
 
@@ -71,28 +71,12 @@ module Nested
     def serialize(*args, &block)
       raise "pass either *args or &block" if args.empty? && !block
 
-      @__serialize = ->(obj, sinatra, resource) do
-        obj = block.call(obj) if block
+      @__serialize = ->(obj, resource) do
+        obj = self.instance_exec(obj, resource, &block) if block
         obj = obj.attributes if obj.is_a?(ActiveRecord::Base)
         obj = obj.symbolize_keys.slice(*args) unless args.empty?
         obj
       end
-
-
-
-      # if block && !args.empty?
-      #   @__serialize = ->(obj, sinatra, resource) do
-      #     block.call(obj).attributes.symbolize_keys.slice(*args)
-      #   end
-      # elsif block && args.empty?
-      #   @__serialize = block
-      # elsif !block && !args.empty?
-      #   @__serialize = ->(obj, sinatra, resource) do
-      #     obj.attributes.symbolize_keys.slice(*args)
-      #   end
-      # else
-      #   raise "pass either *args or &block"
-      # end
     end
 
     def init(&block)
@@ -179,10 +163,6 @@ module Nested
       (self.parents + [self]).reverse
     end
 
-    def serializer
-      @__serialize || SERIALIZE
-    end
-
     # --------------------------
 
     def sinatra_init(sinatra)
@@ -229,9 +209,9 @@ module Nested
 
     def sinatra_response_create_data(sinatra, response)
       data = if response && collection?
-        response.to_a.map{|e| serializer.call(e, sinatra, self)}
+        response.to_a.map{|e| sinatra.instance_exec(e, self, &@__serialize) }
       else
-        serializer.call(response, sinatra, self)
+        sinatra.instance_exec(response, self, &@__serialize)
       end
 
       {data: data, ok: true}
