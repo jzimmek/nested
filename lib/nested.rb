@@ -228,7 +228,7 @@ module Nested
     end
 
     def sinatra_response_create_data(sinatra, response)
-      data = if response.respond_to?(:to_a)
+      data = if response && collection?
         response.to_a.map{|e| serializer.call(e, sinatra, self)}
       else
         serializer.call(response, sinatra, self)
