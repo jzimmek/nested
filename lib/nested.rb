@@ -201,9 +201,9 @@ module Nested
       (response.is_a?(ActiveModel::Errors) || (response.respond_to?(:errors) && !response.errors.empty?)) ? :error : :data
     end
 
-    def sinatra_response(sinatra)
+    def sinatra_response(sinatra, method)
       response = sinatra.instance_variable_get("@#{self.instance_variable_name}")
-      response = self.send(:"sinatra_response_create_#{sinatra_response_type(response)}", sinatra, response)
+      response = self.send(:"sinatra_response_create_#{sinatra_response_type(response)}", sinatra, response, method)
 
       case response
         when String then  response
@@ -211,8 +211,8 @@ module Nested
       end
     end
 
-    def sinatra_response_create_data(sinatra, response)
-      data = if response && collection?
+    def sinatra_response_create_data(sinatra, response, method)
+      data = if response && collection? && method != :post
         response.to_a.map{|e| sinatra.instance_exec(e, &@__serialize) }
       else
         sinatra.instance_exec(response, &@__serialize)
@@ -221,7 +221,7 @@ module Nested
       {data: data, ok: true}
     end
 
-    def sinatra_response_create_error(sinatra, response)
+    def sinatra_response_create_error(sinatra, response, method)
       errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
 
       data = errors.to_hash.inject({}) do |memo, e|
@@ -249,7 +249,7 @@ module Nested
 
         resource.send(:"sinatra_exec_#{method}_block", self, &block)
 
-        resource.sinatra_response(self)
+        resource.sinatra_response(self, method)
       end
     end
   end
