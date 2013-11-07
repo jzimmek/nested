@@ -180,18 +180,20 @@ module Nested
 
     def sinatra_init_data(sinatra, &block)
       sinatra.request.body.rewind
-      @__raw_data = HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
-      @__data = @__raw_data.values_at(*block.parameters.map(&:last))
+      raw_data = HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
+
+      sinatra.instance_variable_set("@__raw_data", raw_data)
+      sinatra.instance_variable_set("@__data", raw_data.values_at(*block.parameters.map(&:last)))
     end
 
     def sinatra_exec_put_block(sinatra, &block)
       sinatra_init_data(sinatra, &block)
-      sinatra.instance_exec(*@__data, &block)
+      sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
     def sinatra_exec_post_block(sinatra, &block)
       sinatra_init_data(sinatra, &block)
-      res = sinatra.instance_exec(*@__data, &block)
+      res = sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
       sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
     end
 
