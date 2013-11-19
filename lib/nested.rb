@@ -302,7 +302,7 @@ module Nested
 
         route_args = args.inject({}) do |memo, e|
           idx = args.index(e)
-          memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : values[#{idx}].id)+'"
+          memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : (values[#{idx}].id || values[#{idx}]))+'"
           memo
         end
         route = "#{self.nested_config[:prefix]}" + resource.route(route_args, action)
