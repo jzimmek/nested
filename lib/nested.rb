@@ -51,8 +51,13 @@ module Nested
         self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
       end
 
-      serialize &->(obj) do
-        obj
+      if member?
+        __serialize_args = @parent.instance_variable_get("@__serialize_args")
+        __serialize_block = @parent.instance_variable_get("@__serialize_block")
+
+        serialize *__serialize_args, &__serialize_block
+      else
+        serialize &->(obj) { obj }
       end
     end
 
@@ -69,7 +74,10 @@ module Nested
     end
 
     def serialize(*args, &block)
-      raise "pass either *args or &block" if args.empty? && !block
+      raise "pass either *args or &block" if args.empty? && !block && !member?
+
+      @__serialize_args = args
+      @__serialize_block = block
 
       @__serialize = ->(obj) do
         obj = self.instance_exec(obj, &block) if block
