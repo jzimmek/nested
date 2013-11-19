@@ -137,6 +137,16 @@ module Nested
       child_resource(name, true, false, &block)
     end
 
+    def delegate(name, &block)
+      singleton(name) do
+        resource = self
+        init do
+          instance_variable_set("@#{resource.instance_variable_name}", instance_variable_get("@#{resource.parent.instance_variable_name}"))
+        end
+        instance_eval(&block)
+      end
+    end
+
     def many(name, &block)
       raise ManyInManyError.new "do not nest many in many" if collection?
       child_resource(name, false, true, &block)
