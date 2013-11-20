@@ -32,7 +32,7 @@ module Nested
 
     attr_reader :name, :parent, :actions, :resources
 
-    def initialize(sinatra, name, singleton, collection, parent)
+    def initialize(sinatra, name, singleton, collection, parent, init_block)
       raise SingletonAndCollectionError.new if singleton && collection
       raise NameMissingError.new if (singleton || collection) && !name
 
@@ -45,7 +45,7 @@ module Nested
       @actions = []
 
       init &-> do
-        fetched = instance_exec(&FETCH)
+        fetched = instance_exec(&(init_block||FETCH))
 
         puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
         self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
@@ -133,8 +133,8 @@ module Nested
       create_sinatra_route :delete, action, &block
     end
 
-    def singleton(name, &block)
-      child_resource(name, true, false, &block)
+    def singleton(name, init_block=nil, &block)
+      child_resource(name, true, false, init_block, &block)
     end
 
     def delegate(name, &block)
@@ -147,18 +147,18 @@ module Nested
       end
     end
 
-    def many(name, &block)
+    def many(name, init_block=nil, &block)
       raise ManyInManyError.new "do not nest many in many" if collection?
-      child_resource(name, false, true, &block)
+      child_resource(name, false, true, init_block, &block)
     end
 
-    def one(name=nil, &block)
+    def one(name=nil, init_block=nil, &block)
       raise OneWithNameInManyError.new("call one (#{name}) without name argument when nested in a many (#{@name})") if name && collection?
-      child_resource(name, false, false, &block)
+      child_resource(name, false, false, init_block, &block)
     end
 
-    def child_resource(name, singleton, collection, &block)
-       Resource.new(@sinatra, name, singleton, collection, self)
+    def child_resource(name, singleton, collection, init_block, &block)
+       Resource.new(@sinatra, name, singleton, collection, self, init_block)
         .tap{|r| r.instance_eval(&block)}
         .tap{|r| @resources << r}
     end
@@ -278,7 +278,8 @@ module Nested
     end
 
     module Sinatra
-      def create_resource(name, singleton, collection, &block)
+      # def create_resource(name, singleton, collection, &block)
+      def create_resource(*args, &block)
         angularize(super)
       end
 
@@ -430,17 +431,17 @@ module Nested
         @nested_config ||= {}
       end
     end
-    def singleton(name, &block)
-      create_resource(name, true, false, &block)
+    def singleton(name, init_block=nil, &block)
+      create_resource(name, true, false, init_block, &block)
     end
-    def many(name, &block)
-      create_resource(name, false, true, &block)
+    def many(name, init_block=nil, &block)
+      create_resource(name, false, true, init_block, &block)
     end
-    def one(name, &block)
-      create_resource(name, false, false, &block)
+    def one(name, init_block=nil, &block)
+      create_resource(name, false, false, init_block, &block)
     end
-    def create_resource(name, singleton, collection, &block)
-      ::Nested::Resource.new(self, name, singleton, collection, nil).tap{|r| r.instance_eval(&block) }
+    def create_resource(name, singleton, collection, init_block, &block)
+      ::Nested::Resource.new(self, name, singleton, collection, nil, init_block).tap{|r| r.instance_eval(&block) }
     end
   end
 

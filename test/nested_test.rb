@@ -8,15 +8,15 @@ require "nested"
 class NestedTest < Test::Unit::TestCase
 
   def singleton!
-    @r = Nested::Resource.new(@sinatra, :project, true, false, nil)
+    @r = Nested::Resource.new(@sinatra, :project, true, false, nil, nil)
   end
 
   def collection!
-    @r = Nested::Resource.new(@sinatra, :project, false, true, nil)
+    @r = Nested::Resource.new(@sinatra, :project, false, true, nil, nil)
   end
 
   def member!
-    @r = Nested::Resource.new(@sinatra, :project, false, false, nil)
+    @r = Nested::Resource.new(@sinatra, :project, false, false, nil, nil)
   end
 
   def setup
@@ -25,11 +25,11 @@ class NestedTest < Test::Unit::TestCase
 
   def test_initialize_name
     assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, true, false, nil)
+      Nested::Resource.new({}, nil, true, false, nil, nil)
     end
 
     assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, false, true, nil)
+      Nested::Resource.new({}, nil, false, true, nil, nil)
     end
   end
 
@@ -140,29 +140,29 @@ class NestedTest < Test::Unit::TestCase
 
   def test_singleton
     singleton!
-    @r.expects(:child_resource).with(:statistic, true, false)
+    @r.expects(:child_resource).with(:statistic, true, false, nil)
     @r.singleton(:statistic)
 
     member!
-    @r.expects(:child_resource).with(:statistic, true, false)
+    @r.expects(:child_resource).with(:statistic, true, false, nil)
     @r.singleton(:statistic)
 
     collection!
-    @r.expects(:child_resource).with(:statistic, true, false)
+    @r.expects(:child_resource).with(:statistic, true, false, nil)
     @r.singleton(:statistic)
   end
 
   def test_one
     singleton!
-    @r.expects(:child_resource).with(:statistic, false, false)
+    @r.expects(:child_resource).with(:statistic, false, false, nil)
     @r.one(:statistic)
 
     member!
-    @r.expects(:child_resource).with(:statistic, false, false)
+    @r.expects(:child_resource).with(:statistic, false, false, nil)
     @r.one(:statistic)
 
     collection!
-    @r.expects(:child_resource).with(nil, false, false)
+    @r.expects(:child_resource).with(nil, false, false, nil)
     @r.one
 
     collection!
@@ -173,11 +173,11 @@ class NestedTest < Test::Unit::TestCase
 
   def test_many
     singleton!
-    @r.expects(:child_resource).with(:statistics, false, true)
+    @r.expects(:child_resource).with(:statistics, false, true, nil)
     @r.many(:statistics)
 
     member!
-    @r.expects(:child_resource).with(:statistics, false, true)
+    @r.expects(:child_resource).with(:statistics, false, true, nil)
     @r.many(:statistics)
 
     collection!
@@ -228,26 +228,26 @@ class NestedTest < Test::Unit::TestCase
 
   def test_child_resource
     singleton!
-    r = @r.child_resource(:statistic, false, false) { }
+    r = @r.child_resource(:statistic, false, false, nil) { }
     assert_equal :statistic, r.name
     assert_equal false, r.instance_variable_get("@singleton")
     assert_equal false, r.instance_variable_get("@collection")
 
     singleton!
-    r = @r.child_resource(:statistic, true, false) { }
+    r = @r.child_resource(:statistic, true, false, nil) { }
     assert_equal :statistic, r.name
     assert_equal true, r.instance_variable_get("@singleton")
     assert_equal false, r.instance_variable_get("@collection")
 
     singleton!
-    r = @r.child_resource(:statistic, false, true) { }
+    r = @r.child_resource(:statistic, false, true, nil) { }
     assert_equal :statistic, r.name
     assert_equal false, r.instance_variable_get("@singleton")
     assert_equal true, r.instance_variable_get("@collection")
 
     singleton!
     assert_raise Nested::SingletonAndCollectionError do
-      @r.child_resource(:statistic, true, true) { }
+      @r.child_resource(:statistic, true, true, nil) { }
     end
   end
 
