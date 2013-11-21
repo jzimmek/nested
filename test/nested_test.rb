@@ -294,20 +294,21 @@ class NestedTest < Test::Unit::TestCase
     singleton!
 
     @sinatra.expects(:send).with(:get, "/project")
-    @r.create_sinatra_route(:get, nil) { }
-    assert_equal [{method: :get, action: nil}], @r.actions
+    block = ->{ }
+    @r.create_sinatra_route(:get, nil, &block)
+    assert_equal [{method: :get, action: nil, block: block}], @r.actions
 
     singleton!
 
     @sinatra.expects(:send).with(:post, "/project")
-    @r.create_sinatra_route(:post, nil) { }
-    assert_equal [{method: :post, action: nil}], @r.actions
+    @r.create_sinatra_route(:post, nil, &block)
+    assert_equal [{method: :post, action: nil, block: block}], @r.actions
 
     singleton!
 
     @sinatra.expects(:send).with(:post, "/project/action")
-    @r.create_sinatra_route(:post, :action) { }
-    assert_equal [{method: :post, action: :action}], @r.actions
+    @r.create_sinatra_route(:post, :action, &block)
+    assert_equal [{method: :post, action: :action, block: block}], @r.actions
   end
 
   def test_serializer

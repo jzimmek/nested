@@ -179,28 +179,36 @@ module Nested
     end
 
     def sinatra_exec_get_block(sinatra, &block)
-      sinatra.instance_exec(&block)
+      sinatra_init_data(:get, sinatra, &block)
+      sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
     def sinatra_exec_delete_block(sinatra, &block)
-      sinatra.instance_exec(&block)
+      sinatra_init_data(:delete, sinatra, &block)
+      sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
-    def sinatra_init_data(sinatra, &block)
-      sinatra.request.body.rewind
-      raw_data = HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
+    def sinatra_init_data(method, sinatra, &block)
+      raw_data = if [:put, :post].include?(method)
+        sinatra.request.body.rewind
+        HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
+      elsif [:get, :delete].include?(method)
+        sinatra.params
+      else
+        {}
+      end
 
       sinatra.instance_variable_set("@__raw_data", raw_data)
       sinatra.instance_variable_set("@__data", raw_data.values_at(*block.parameters.map(&:last)))
     end
 
     def sinatra_exec_put_block(sinatra, &block)
-      sinatra_init_data(sinatra, &block)
+      sinatra_init_data(:put, sinatra, &block)
       sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
     def sinatra_exec_post_block(sinatra, &block)
-      sinatra_init_data(sinatra, &block)
+      sinatra_init_data(:post, sinatra, &block)
       res = sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
       sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
     end
@@ -241,7 +249,7 @@ module Nested
     end
 
     def create_sinatra_route(method, action, &block)
-      @actions << {method: method, action: action}
+      @actions << {method: method, action: action, block: block}
 
       resource = self
 
@@ -285,7 +293,8 @@ module Nested
 
     def angular_add_functions(js, resource)
       resource.actions.each do |e|
-        method, action = e.values_at :method, :action
+        method, action, block = e.values_at :method, :action, :block
+        block_args = block.parameters.map(&:last)
 
         fun_name = Nested::JsUtil::generate_function_name(resource, method, action)
 
@@ -300,10 +309,16 @@ module Nested
         when_args = args.map{|a| "$q.when(#{a})"}
 
         if [:get, :delete].include?(method)
+          args << "data" if !block_args.empty?
+
           js << "  impl.#{fun_name} = function(#{args.join(',')}){"
           js << "    var deferred = $q.defer()"
           js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
-          js << "      $http({method: '#{method}', url: '#{route}'})"
+          js << "      $http({"
+          js << "         method: '#{method}', "
+          js << ("         url: '#{route}'" + (block_args.empty? ? "" : ","))
+          js << "         params: data" unless block_args.empty?
+          js << "      })"
           js << "        .success(function(responseData){"
           js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
           js << "        })"
@@ -324,7 +339,7 @@ module Nested
           js << "    return deferred.promise"
           js << "  }"
         elsif method == :put
-          args << "data" if args.empty?
+          args << "data" if args.empty? || !block_args.empty?
 
           js << "  impl.#{fun_name} = function(#{args.join(',')}){"
           js << "    var deferred = $q.defer()"
