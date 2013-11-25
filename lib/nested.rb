@@ -14,6 +14,13 @@ module Nested
   class NameMissingError < StandardError
   end
 
+  class Redirect
+    attr_reader :url
+    def initialize(url)
+      @url = url
+    end
+  end
+
   class Resource
     FETCH = -> do
       raise "implement fetch for resource #{@__resource.name}"  unless @__resource.parent
@@ -214,7 +221,7 @@ module Nested
     end
 
     def sinatra_response_type(response)
-      (response.is_a?(ActiveModel::Errors) || (response.respond_to?(:errors) && !response.errors.empty?)) ? :error : :data
+      (response.is_a?(ActiveModel::Errors) || (response.respond_to?(:errors) && !response.errors.empty?)) ? :error : (response.is_a?(Nested::Redirect) ? :redirect : :data)
     end
 
     def sinatra_response(sinatra, method)
@@ -222,9 +229,17 @@ module Nested
       response = self.send(:"sinatra_response_create_#{sinatra_response_type(response)}", sinatra, response, method)
 
       case response
-        when String then  response
-        else              response.to_json
+        when Nested::Redirect then
+          sinatra.redirect(response.url)
+        when String then
+          response
+        else
+          response.to_json
       end
+    end
+
+    def sinatra_response_create_redirect(sinatra, response, method)
+      response
     end
 
     def sinatra_response_create_data(sinatra, response, method)
