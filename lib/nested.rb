@@ -54,7 +54,7 @@ module Nested
       init &-> do
         fetched = instance_exec(&(init_block||FETCH))
 
-        puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
+        # puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
         self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
       end
 
