@@ -308,6 +308,14 @@ module Nested
         route = "#{self.nested_config[:prefix]}" + resource.route(route_args, action)
         when_args = args.map{|a| "$q.when(#{a})"}
 
+        js << "  impl.#{fun_name}Url = function(#{args.join(',')}){"
+        js << "    var deferred = $q.defer()"
+        js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+        js << "      deferred.resolve('#{route}')"
+        js << "    })"
+        js << "    return deferred.promise"
+        js << "  }"
+
         if [:get, :delete].include?(method)
           args << "data" if !block_args.empty?
 
