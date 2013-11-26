@@ -55,7 +55,8 @@ module Nested
         fetched = instance_exec(&(init_block||FETCH))
 
         # puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
-        self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
+        # self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
+        @__resource.sinatra_set_instance_variable(self, @__resource.instance_variable_name, fetched)
       end
 
       if member?
@@ -180,6 +181,11 @@ module Nested
 
     # --------------------------
 
+    def sinatra_set_instance_variable(sinatra, name, value)
+      raise "variable @#{name} already defined" if sinatra.instance_variable_defined?(:"@#{name}")
+      sinatra.instance_variable_set(:"@#{name}", value)
+    end
+
     def sinatra_init(sinatra)
       sinatra.instance_variable_set("@__resource", self)
       sinatra.instance_exec(&@__init)
@@ -217,7 +223,8 @@ module Nested
     def sinatra_exec_post_block(sinatra, &block)
       sinatra_init_data(:post, sinatra, &block)
       res = sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
-      sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
+      # sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
+      sinatra_set_instance_variable(sinatra, self.instance_variable_name, res)
     end
 
     def sinatra_response_type(response)
