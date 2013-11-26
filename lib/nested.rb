@@ -223,8 +223,9 @@ module Nested
     def sinatra_exec_post_block(sinatra, &block)
       sinatra_init_data(:post, sinatra, &block)
       res = sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
-      # sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
-      sinatra_set_instance_variable(sinatra, self.instance_variable_name, res)
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
+      # TODO: do we need to check for existing variables here?
+      # sinatra_set_instance_variable(sinatra, self.instance_variable_name, res)
     end
 
     def sinatra_response_type(response)
