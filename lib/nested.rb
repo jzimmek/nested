@@ -394,7 +394,7 @@ module Nested
 
       module_name = "nested_#{resource.name}".camelcase(:lower)
 
-      js << "angular.module('#{module_name}', ['ngResource'])"
+      js << "angular.module('#{module_name}', [])"
       js << ".factory('#{resource.name.to_s.camelcase.capitalize}#{nested_angular_config[:service_suffix]}', function($http, $q){"
 
       js << "  var impl = {}"
