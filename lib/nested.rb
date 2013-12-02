@@ -403,9 +403,11 @@ module Nested
 
       js << "})"
 
+      response_transform = nested_angular_config[:response_transform] || ->(code){ code }
+
       get "/#{resource.name}.js" do
         content_type :js
-        js.join("\n")
+        instance_exec(js.join("\n"), &response_transform)
       end
     end
   end
