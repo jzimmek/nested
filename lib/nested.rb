@@ -233,7 +233,12 @@ module Nested
     end
 
     def sinatra_response(sinatra, method)
-      response = sinatra.instance_variable_get("@#{self.instance_variable_name}")
+      response = if sinatra.errors.empty?
+        sinatra.instance_variable_get("@#{self.instance_variable_name}")
+      else
+        sinatra.errors
+      end
+
       response = self.send(:"sinatra_response_create_#{sinatra_response_type(response)}", sinatra, response, method)
 
       case response
@@ -280,6 +285,15 @@ module Nested
       puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{route}"
 
       @sinatra.send(method, route) do
+
+        def self.error(message)
+          errors.add(:base, message)
+        end
+
+        def self.errors
+          @__errors ||= ActiveModel::Errors.new({})
+        end
+
         content_type :json
 
         resource.self_and_parents.reverse.each do |res|
