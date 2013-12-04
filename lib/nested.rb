@@ -65,7 +65,7 @@ module Nested
 
         serialize *__serialize_args, &__serialize_block
       else
-        serialize &->(obj) { obj }
+        serialize &->(obj) { raise "implement serializer for #{@__resource.type} #{@__resource.name}" }
       end
     end
 
@@ -79,6 +79,18 @@ module Nested
 
     def collection?
       @collection == true
+    end
+
+    def type
+      if singleton?
+        :singleton
+      elsif member?
+        :member
+      elsif collection?
+        :collection
+      else
+        raise "undefined"
+      end
     end
 
     def serialize(*args, &block)
