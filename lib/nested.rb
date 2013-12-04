@@ -297,7 +297,6 @@ module Nested
       puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{route}"
 
       @sinatra.send(method, route) do
-
         def self.error(message)
           errors.add(:base, message)
         end
@@ -306,15 +305,28 @@ module Nested
           @__errors ||= ActiveModel::Errors.new({})
         end
 
-        content_type :json
+        begin
+          content_type :json
 
-        resource.self_and_parents.reverse.each do |res|
-          res.sinatra_init(self)
+          resource.self_and_parents.reverse.each do |res|
+            res.sinatra_init(self)
+          end
+
+          resource.send(:"sinatra_exec_#{method}_block", self, &block)
+
+          resource.sinatra_response(self, method)
+        rescue Exception => e
+          context_arr = []
+          context_arr << "route: #{route}"
+          context_arr << "method: #{method}"
+          context_arr << "action: #{action}"
+          context_arr << "resource: #{resource.name} (#{resource.type})"
+
+          resource_object = instance_variable_get("@#{resource.instance_variable_name}")
+          context_arr << "@#{resource.instance_variable_name}: #{resource_object.inspect}"
+          puts context_arr.join("\n")
+          raise e
         end
-
-        resource.send(:"sinatra_exec_#{method}_block", self, &block)
-
-        resource.sinatra_response(self, method)
       end
     end
   end
