@@ -268,7 +268,7 @@ module Nested
     end
 
     def sinatra_response_create_data(sinatra, response, method)
-      data = if response && collection? && method != :post
+      data = if response && (collection? || response.is_a?(Array)) && method != :post
         response.to_a.map{|e| sinatra.instance_exec(e, &@__serialize) }
       else
         sinatra.instance_exec(response, &@__serialize)
