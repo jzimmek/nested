@@ -277,15 +277,16 @@ module Nested
       {data: data, ok: true}
     end
 
-    def sinatra_response_create_error(sinatra, response, method)
-      errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
-
-      data = errors.to_hash.inject({}) do |memo, e|
+    def sinatra_errors_to_hash(errors)
+      errors.to_hash.inject({}) do |memo, e|
         memo[e[0]] = e[1][0]
         memo
       end
+    end
 
-      {data: data, ok: false}
+    def sinatra_response_create_error(sinatra, response, method)
+      errors = response.is_a?(ActiveModel::Errors) ? response : response.errors
+      {data: sinatra_errors_to_hash(errors), ok: false}
     end
 
     def create_sinatra_route(method, action, &block)
