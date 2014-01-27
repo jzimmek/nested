@@ -313,12 +313,15 @@ class NestedTest < Test::Unit::TestCase
 
   def test_serializer
     singleton!
-    # assert_equal(@r.serializer, Nested::Resource::SERIALIZE)
 
-    ser = ->(obj) { obj }
-    @r.serialize &ser
+    @r.serialize :name
 
-    assert_equal 1, @r.instance_variable_get("@__serialize").call(1)
+    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
+    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe", boss: true}))
+    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call(OpenStruct.new({name: "joe"})))
+
+    @r.serialize :name, virtual: ->(o){ o[:name] + "!!" }
+    assert_equal({name: "joe", virtual: "joe!!"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
   end
 
   # ----

@@ -60,12 +60,7 @@ module Nested
       end
 
       if member?
-        __serialize_args = @parent.instance_variable_get("@__serialize_args")
-        __serialize_block = @parent.instance_variable_get("@__serialize_block")
-
-        serialize *__serialize_args, &__serialize_block
-      else
-        serialize &->(obj) { raise "implement serializer for #{@__resource.type} #{@__resource.name}" }
+        serialize *@parent.instance_variable_get("@__serialize_args")
       end
     end
 
@@ -93,17 +88,20 @@ module Nested
       end
     end
 
-    def serialize(*args, &block)
-      raise "pass either *args or &block" if args.empty? && !block && !member?
-
+    def serialize(*args)
       @__serialize_args = args
-      @__serialize_block = block
 
       @__serialize = ->(obj) do
-        obj = self.instance_exec(obj, &block) if block
-        obj = obj.attributes if obj.is_a?(ActiveRecord::Base)
-        obj = obj.symbolize_keys.slice(*args) unless args.empty?
-        obj
+        args.inject({}) do |memo, field|
+          case field
+            when Symbol
+              memo[field] = obj.is_a?(Hash) ? obj[field] : obj.send(field)
+            when Hash
+              field, proc = field.to_a.first
+              memo[field] = self.instance_exec(obj, &proc)
+          end
+          memo
+        end
       end
     end
 
