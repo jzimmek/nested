@@ -21,23 +21,60 @@ module Nested
     end
   end
 
-  class Resource
-    FETCH = -> do
-      raise "implement fetch for resource #{@__resource.name}"  unless @__resource.parent
-      raise "implement fetch for singleton #{@__resource.name}" if @__resource.singleton?
+  class SerializerField
+    attr_accessor :name, :condition
+    def initialize(name, condition)
+      @name = name
+      @condition = condition
+    end
+  end
 
-      parent_resource = @__resource.parent
-      parent_obj = instance_variable_get("@#{parent_resource.instance_variable_name}")
+  class Serializer
+    attr_accessor :includes, :excludes
 
-      if @__resource.name
-        scope = parent_obj.send(@__resource.name.to_s.pluralize.to_sym)
-        @__resource.collection? ? scope : scope.where(id: params["#{@__resource.name.to_s.singularize}_id"]).first
-      else
-        parent_obj.where(id: params["#{parent_resource.name.to_s.singularize}_id"]).first
-      end
+    def initialize(includes=[])
+      @includes = includes.clone
+      @excludes = []
     end
 
-    attr_reader :name, :parent, :actions, :resources
+    def +(field)
+      field = field.is_a?(SerializerField) ? field : SerializerField.new(field, ->{ true })
+
+      @includes << field unless @includes.detect{|e| e.name == field.name}
+      @excludes = @excludes.reject{|e| e.name == field.name}
+      self
+    end
+
+    def -(field)
+      field = field.is_a?(SerializerField) ? field : SerializerField.new(field, ->{ true })
+
+      @excludes << field unless @excludes.detect{|e| e.name == field.name}
+      self
+    end
+
+    def serialize
+      this = self
+      ->(obj) do
+        excludes = this.excludes.select{|e| instance_exec(&e.condition)}
+
+        this.includes.reject{|e| excludes.detect{|e2| e2.name == e.name}}.inject({}) do |memo, field|
+          if instance_exec(&field.condition)
+            case field.name
+              when Symbol
+                memo[field.name] = obj.is_a?(Hash) ? obj[field.name] : obj.send(field.name)
+              when Hash
+                field_name, proc = field.name.to_a.first
+                memo[field_name] = instance_exec(obj, &proc)
+            end
+          end
+          memo
+        end
+      end
+    end
+  end
+
+  class Resource
+    attr_reader :name, :parent, :actions, :resources, :serializer
 
     def initialize(sinatra, name, singleton, collection, parent, init_block)
       raise SingletonAndCollectionError.new if singleton && collection
@@ -50,18 +87,10 @@ module Nested
       @parent = parent
       @resources = []
       @actions = []
+      @init_block = init_block
+      @run_blocks = []
 
-      init &-> do
-        fetched = instance_exec(&(init_block||FETCH))
-
-        # puts "set @#{@__resource.instance_variable_name} to #{fetched.inspect} for #{self}"
-        # self.instance_variable_set("@#{@__resource.instance_variable_name}", fetched)
-        @__resource.sinatra_set_instance_variable(self, @__resource.instance_variable_name, fetched)
-      end
-
-      if member?
-        serialize *@parent.instance_variable_get("@__serialize_args")
-      end
+      @serializer = Serializer.new(member? ? parent.serializer.includes : [])
     end
 
     def singleton?
@@ -74,6 +103,11 @@ module Nested
 
     def collection?
       @collection == true
+    end
+
+    def run(&block)
+      @run_blocks << block
+      self
     end
 
     def type
@@ -89,46 +123,34 @@ module Nested
     end
 
     def serialize(*args)
-      @__serialize_args = args
+      args.each {|arg| serializer + arg }
+      serializer
+    end
 
-      @__serialize = ->(obj) do
-        args.inject({}) do |memo, field|
-          case field
-            when Symbol
-              memo[field] = obj.is_a?(Hash) ? obj[field] : obj.send(field)
-            when Hash
-              field, proc = field.to_a.first
-              memo[field] = self.instance_exec(obj, &proc)
-          end
-          memo
-        end
+    def serialize_include_if(condition, *args)
+      args.each {|arg| @serializer + SerializerField.new(arg, condition) }
+    end
+
+    def serialize_exclude_if(condition, *args)
+      args.each {|arg| @serializer - SerializerField.new(arg, condition) }
+    end
+
+    def route_replace(route, args)
+      args.each do |k, v|
+        route = route.gsub(":#{k}", "#{v}")
       end
+      route
     end
 
-    def init(&block)
-      @__init = block
-    end
-
-    def route(args={}, action=nil)
+    def route(action=nil)
       "".tap do |r|
-        r << @parent.route(args) if @parent
+        r << @parent.route if @parent
 
-        if singleton?
-          r << "/" + @name.to_s.singularize
-        elsif collection?
-          r << "/" + @name.to_s.pluralize
+
+        if singleton? || collection?
+          r << "/#{@name}"
         else
-          if @name
-            r << "/" + @name.to_s.pluralize
-          end
-          r << "/"
-          key = ((@name || @parent.name).to_s.singularize + "_id").to_sym
-
-          if args.key?(key)
-            r << args[key].to_s
-          else
-            r << ":#{key}"
-          end
+          r << "/:#{@name}_id"
         end
 
         r << "/#{action}" if action
@@ -152,17 +174,45 @@ module Nested
     end
 
     def singleton(name, init_block=nil, &block)
-      child_resource(name, true, false, init_block, &block)
+      child_resource(name, true, false, init_block, &(block||Proc.new{ }))
     end
 
     def many(name, init_block=nil, &block)
       raise ManyInManyError.new "do not nest many in many" if collection?
-      child_resource(name, false, true, init_block, &block)
+      child_resource(name, false, true, init_block, &(block||Proc.new{ }))
     end
 
-    def one(name=nil, init_block=nil, &block)
-      raise OneWithNameInManyError.new("call one (#{name}) without name argument when nested in a many (#{@name})") if name && collection?
-      child_resource(name, false, false, init_block, &block)
+    def default_init_block_singleton
+      if parent
+        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
+      else
+        Proc.new { nil }
+      end
+    end
+
+    def default_init_block_many
+      if parent
+        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
+      else
+        Proc.new { nil }
+      end
+    end
+
+    def default_init_block_one
+      if parent
+        Proc.new do
+          instance_variable_get("@#{@__resource.parent.instance_variable_name}")
+            .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
+            .first
+        end
+      else
+        Proc.new { nil }
+      end
+    end
+
+    def one(&block)
+      raise "calling one() is only allowed within many() resource" unless collection?
+      child_resource(self.name.to_s.singularize.to_sym, false, false, nil, &(block||Proc.new{ }))
     end
 
     def child_resource(name, singleton, collection, init_block, &block)
@@ -172,13 +222,7 @@ module Nested
     end
 
     def instance_variable_name
-      if @name
-        @name.to_s.send(collection? ? :pluralize : :singularize).to_sym
-      elsif member? && @parent
-        @parent.name.to_s.singularize.to_sym
-      else
-        nil
-      end
+      member? ? parent.name.to_s.singularize.to_sym : @name
     end
 
     def parents
@@ -198,7 +242,22 @@ module Nested
 
     def sinatra_init(sinatra)
       sinatra.instance_variable_set("@__resource", self)
-      sinatra.instance_exec(&@__init)
+
+      init_block = if @init_block
+        @init_block
+      else
+        if singleton?
+          default_init_block_singleton
+        elsif collection?
+          default_init_block_many
+        else
+          default_init_block_one
+        end
+      end
+
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&init_block))
+
+      @run_blocks.each{|e| sinatra.instance_exec(&e)}
     end
 
     def sinatra_exec_get_block(sinatra, &block)
@@ -267,9 +326,9 @@ module Nested
 
     def sinatra_response_create_data(sinatra, response, method)
       data = if response && (collection? || response.is_a?(Array)) && method != :post
-        response.to_a.map{|e| sinatra.instance_exec(e, &@__serialize) }
+        response.to_a.map{|e| sinatra.instance_exec(e, &@serializer.serialize) }
       else
-        sinatra.instance_exec(response, &@__serialize)
+        sinatra.instance_exec(response, &@serializer.serialize)
       end
 
       {data: data, ok: true}
@@ -292,7 +351,7 @@ module Nested
 
       resource = self
 
-      route = resource.route({}, action)
+      route = resource.route(action)
       puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{route}"
 
       @sinatra.send(method, route) do
@@ -319,10 +378,19 @@ module Nested
           context_arr << "route: #{route}"
           context_arr << "method: #{method}"
           context_arr << "action: #{action}"
-          context_arr << "resource: #{resource.name} (#{resource.type})"
 
+          context_arr << "resource: #{resource.name} (#{resource.type})"
           resource_object = instance_variable_get("@#{resource.instance_variable_name}")
           context_arr << "@#{resource.instance_variable_name}: #{resource_object.inspect}"
+
+          parent = resource.try(:parent)
+
+          if parent
+            context_arr << "parent: #{parent.try(:name)} (#{parent.try(:type)})"
+            parent_object = instance_variable_get("@#{parent.try(:instance_variable_name)}")
+            context_arr << "@#{parent.try(:instance_variable_name)}: #{parent_object.inspect}"
+          end
+
           puts context_arr.join("\n")
           raise e
         end
@@ -365,7 +433,7 @@ module Nested
           memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : (values[#{idx}].id || values[#{idx}]))+'"
           memo
         end
-        route = "#{self.nested_config[:prefix]}" + resource.route(route_args, action)
+        route = "#{self.nested_config[:prefix]}" + resource.route_replace(resource.route(action), route_args)
         when_args = args.map{|a| "$q.when(#{a})"}
 
         js << "  impl.#{fun_name}Url = function(#{args.join(',')}){"

@@ -7,16 +7,25 @@ require "nested"
 
 class NestedTest < Test::Unit::TestCase
 
-  def singleton!
-    @r = Nested::Resource.new(@sinatra, :project, true, false, nil, nil)
+  # def singleton!
+  #   @r = Nested::Resource.new(@sinatra, :project, true, false, nil, nil)
+  # end
+
+  # def collection!(instance_variable_name: "@r", resource_name: :project)
+  #   instance_variable_set(instance_variable_name, Nested::Resource.new(@sinatra, resource_name, false, true, nil, nil))
+  # end
+
+  # def member!(resource_name: :project, parent_resource_name: :projects)
+  #   collection! instance_variable_name: "@r_parent", resource_name: parent_resource_name
+  #   @r = Nested::Resource.new(@sinatra, resource_name, false, false, @r_parent, nil)
+  # end
+
+  def singleton(name)
+    Nested::Resource.new(@sinatra, name, true, false, nil, nil)
   end
 
-  def collection!
-    @r = Nested::Resource.new(@sinatra, :project, false, true, nil, nil)
-  end
-
-  def member!
-    @r = Nested::Resource.new(@sinatra, :project, false, false, nil, nil)
+  def many(name)
+    Nested::Resource.new(@sinatra, name, false, true, nil, nil)
   end
 
   def setup
@@ -34,481 +43,342 @@ class NestedTest < Test::Unit::TestCase
   end
 
   def test_is_singleton
-    singleton!
-    assert_equal true, @r.singleton?
-
-    collection!
-    assert_equal false, @r.singleton?
+    assert_equal true, singleton(:project).singleton?
+    assert_equal false, many(:projects).singleton?
+    assert_equal false, many(:projects).one.singleton?
   end
 
   def test_is_collection
-    collection!
-    assert_equal true, @r.collection?
-
-    singleton!
-    assert_equal false, @r.collection?
+    assert_equal true, many(:projects).collection?
+    assert_equal false, many(:projects).one.collection?
+    assert_equal false, singleton(:project).collection?
   end
 
   def test_is_member
-    member!
-    assert_equal true, @r.member?
-
-    singleton!
-    assert_equal false, @r.member?
-
-    collection!
-    assert_equal false, @r.member?
+    assert_equal true, many(:projects).one.member?
+    assert_equal false, many(:projects).member?
+    assert_equal false, singleton(:project).member?
   end
 
-  def test_init
-    singleton!
-
-    init = -> { }
-    @r.init &init
-
-    assert_equal init, @r.instance_variable_get("@__init")
-  end
+  # def test_init
+  #   init = ->{ }
+  #   assert_equal init, singleton(:project).init(&init).instance_variable_get("@__init")
+  # end
 
   def test_serialize
-    singleton!
+    serializer = mock()
 
-    @r.serialize :name
+    r = singleton(:project)
+    r.stubs(:serializer).returns(serializer)
 
-    assert_equal({name: :joe}, @r.instance_variable_get("@__serialize").call({name: :joe, test: true}))
+    assert_equal serializer, r.serialize
+
+    serializer.expects(:+).with(:name)
+    r.serialize :name
+  end
+
+  def test_route_replace
+    resource = many(:projects).one
+
+    assert_equal "/projects/1", resource.route_replace(resource.route, project_id: 1)
+    assert_equal "/projects/1/myaction", resource.route_replace(resource.route(:myaction), project_id: 1)
+
+    resource = singleton(:project).many(:statistics).one
+    assert_equal "/project/statistics/1", resource.route_replace(resource.route, statistic_id: 1)
+
+    resource = singleton(:project).many(:statistics).one.singleton(:today)
+    assert_equal "/project/statistics/1/today", resource.route_replace(resource.route, statistic_id: 1)
+
+    resource = singleton(:project).many(:statistics).one.many(:entries)
+    assert_equal "/project/statistics/1/entries", resource.route_replace(resource.route, statistic_id: 1)
+
+    resource = singleton(:project).many(:statistics).one.many(:entries).one
+    assert_equal "/project/statistics/1/entries/2", resource.route_replace(resource.route, statistic_id: 1, entry_id: 2)
   end
 
   def test_route
-    # no parent
-    singleton!
-    assert_equal "/project", @r.route
+    assert_equal "/project", singleton(:project).route
+    assert_equal "/projects", many(:projects).route
 
-    collection!
-    assert_equal "/projects", @r.route
+    assert_equal "/projects/:project_id", many(:projects).one.route
+    assert_equal "/projects/:project_id/myaction", many(:projects).one.route(:myaction)
 
-    member!
-    assert_equal "/projects/:project_id", @r.route
-    assert_equal "/projects/1", @r.route(project_id: 1)
+    assert_equal "/project/statistic", singleton(:project).singleton(:statistic).route
+    assert_equal "/project/statistics", singleton(:project).many(:statistics).route
 
-    member!
-    assert_equal "/projects/:project_id/myaction", @r.route({}, :myaction)
-    assert_equal "/projects/1/myaction", @r.route({project_id: 1}, :myaction)
+    assert_equal "/project/statistics/:statistic_id", singleton(:project).many(:statistics).one.route
+    assert_equal "/project/statistics/:statistic_id/today", singleton(:project).many(:statistics).one.singleton(:today).route
 
-    # --- singleton
-
-    singleton!
-    @r2 = @r.singleton(:statistic) { }
-    assert_equal "/project/statistic", @r2.route
-
-    singleton!
-    @r2 = @r.many(:statistics) { }
-    assert_equal "/project/statistics", @r2.route
-
-    singleton!
-    @r2 = @r.one(:statistic) { }
-    assert_equal "/project/statistics/:statistic_id", @r2.route
-    assert_equal "/project/statistics/1", @r2.route(statistic_id: 1)
-
-    # --- collection
-
-    collection!
-    @r2 = @r.singleton(:statistic) { }
-    assert_equal "/projects/statistic", @r2.route
-
-    collection!
-    @r2 = @r.one { }
-    assert_equal "/projects/:project_id", @r2.route
-    assert_equal "/projects/1", @r2.route(project_id: 1)
-
-    # --- member
-
-    member!
-    @r2 = @r.singleton(:statistic) { }
-    assert_equal "/projects/:project_id/statistic", @r2.route
-    assert_equal "/projects/1/statistic", @r2.route(project_id: 1)
-
-    member!
-    @r2 = @r.many(:statistic) { }
-    assert_equal "/projects/:project_id/statistics", @r2.route
-    assert_equal "/projects/1/statistics", @r2.route(project_id: 1)
-
-    member!
-    @r2 = @r.one(:statistic) { }
-    assert_equal "/projects/:project_id/statistics/:statistic_id", @r2.route
-    assert_equal "/projects/1/statistics/2", @r2.route(project_id: 1, statistic_id: 2)
+    assert_equal "/project/statistics/:statistic_id/entries", singleton(:project).many(:statistics).one.many(:entries).route
+    assert_equal "/project/statistics/:statistic_id/entries/:entry_id", singleton(:project).many(:statistics).one.many(:entries).one.route
   end
 
 
   def test_singleton
-    singleton!
-    @r.expects(:child_resource).with(:statistic, true, false, nil)
-    @r.singleton(:statistic)
+    resource = singleton(:project)
+    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.singleton(:statistic)
 
-    member!
-    @r.expects(:child_resource).with(:statistic, true, false, nil)
-    @r.singleton(:statistic)
+    resource = many(:projects)
+    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.singleton(:statistic)
 
-    collection!
-    @r.expects(:child_resource).with(:statistic, true, false, nil)
-    @r.singleton(:statistic)
+    resource = many(:projects).one
+    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.singleton(:statistic)
   end
 
   def test_one
-    singleton!
-    @r.expects(:child_resource).with(:statistic, false, false, nil)
-    @r.one(:statistic)
-
-    member!
-    @r.expects(:child_resource).with(:statistic, false, false, nil)
-    @r.one(:statistic)
-
-    collection!
-    @r.expects(:child_resource).with(nil, false, false, nil)
-    @r.one
-
-    collection!
-    assert_raise ::Nested::OneWithNameInManyError do
-      @r.one :statistic
-    end
+    resource = many(:projects)
+    resource.expects(:child_resource).with(:project, false, false, nil)
+    resource.one
   end
 
   def test_many
-    singleton!
-    @r.expects(:child_resource).with(:statistics, false, true, nil)
-    @r.many(:statistics)
+    resource = singleton(:project)
+    resource.expects(:child_resource).with(:statistics, false, true, nil)
+    resource.many(:statistics)
 
-    member!
-    @r.expects(:child_resource).with(:statistics, false, true, nil)
-    @r.many(:statistics)
-
-    collection!
-    assert_raise ::Nested::ManyInManyError do
-      @r.many :statistic
-    end
+    resource = singleton(:project).many(:statistics).one
+    resource.expects(:child_resource).with(:entries, false, true, nil)
+    resource.many(:entries)
   end
 
   def test_get
-    singleton!
+    resource = singleton(:project)
 
-    @r.expects(:create_sinatra_route).with(:get, nil)
-    @r.get
+    resource.expects(:create_sinatra_route).with(:get, nil)
+    resource.get
 
-    @r.expects(:create_sinatra_route).with(:get, :action)
-    @r.get :action
+    resource.expects(:create_sinatra_route).with(:get, :action)
+    resource.get :action
   end
 
   def test_post
-    singleton!
+    resource = singleton(:project)
 
-    @r.expects(:create_sinatra_route).with(:post, nil)
-    @r.post
+    resource.expects(:create_sinatra_route).with(:post, nil)
+    resource.post
 
-    @r.expects(:create_sinatra_route).with(:post, :action)
-    @r.post :action
+    resource.expects(:create_sinatra_route).with(:post, :action)
+    resource.post :action
   end
 
   def test_put
-    singleton!
+    resource = singleton(:project)
 
-    @r.expects(:create_sinatra_route).with(:put, nil)
-    @r.put
+    resource.expects(:create_sinatra_route).with(:put, nil)
+    resource.put
 
-    @r.expects(:create_sinatra_route).with(:put, :action)
-    @r.put :action
+    resource.expects(:create_sinatra_route).with(:put, :action)
+    resource.put :action
   end
 
   def test_delete
-    singleton!
+    resource = singleton(:project)
 
-    @r.expects(:create_sinatra_route).with(:delete, nil)
-    @r.delete
+    resource.expects(:create_sinatra_route).with(:delete, nil)
+    resource.delete
 
-    @r.expects(:create_sinatra_route).with(:delete, :action)
-    @r.delete :action
+    resource.expects(:create_sinatra_route).with(:delete, :action)
+    resource.delete :action
   end
 
   def test_child_resource
-    singleton!
-    r = @r.child_resource(:statistic, false, false, nil) { }
-    assert_equal :statistic, r.name
-    assert_equal false, r.instance_variable_get("@singleton")
-    assert_equal false, r.instance_variable_get("@collection")
+    resource = singleton(:project).child_resource(:statistic, false, false, nil) { }
+    assert_equal :statistic, resource.name
+    assert_equal false, resource.instance_variable_get("@singleton")
+    assert_equal false, resource.instance_variable_get("@collection")
 
-    singleton!
-    r = @r.child_resource(:statistic, true, false, nil) { }
-    assert_equal :statistic, r.name
-    assert_equal true, r.instance_variable_get("@singleton")
-    assert_equal false, r.instance_variable_get("@collection")
+    resource = singleton(:project).child_resource(:statistic, true, false, nil) { }
+    assert_equal :statistic, resource.name
+    assert_equal true, resource.instance_variable_get("@singleton")
+    assert_equal false, resource.instance_variable_get("@collection")
 
-    singleton!
-    r = @r.child_resource(:statistic, false, true, nil) { }
-    assert_equal :statistic, r.name
-    assert_equal false, r.instance_variable_get("@singleton")
-    assert_equal true, r.instance_variable_get("@collection")
-
-    singleton!
-    assert_raise Nested::SingletonAndCollectionError do
-      @r.child_resource(:statistic, true, true, nil) { }
-    end
+    resource = singleton(:project).child_resource(:statistic, false, true, nil) { }
+    assert_equal :statistic, resource.name
+    assert_equal false, resource.instance_variable_get("@singleton")
+    assert_equal true, resource.instance_variable_get("@collection")
   end
 
   def test_instance_variable_name
-    singleton!
-    assert_equal :project, @r.instance_variable_name
-
-    member!
-    assert_equal :project, @r.instance_variable_name
-
-    collection!
-    assert_equal :projects, @r.instance_variable_name
-
-    collection!
-    r2 = @r.one {}
-    assert_equal :project, r2.instance_variable_name
+    assert_equal :project, singleton(:project).instance_variable_name
+    assert_equal :projects, many(:projects).instance_variable_name
+    assert_equal :project, many(:projects).one.instance_variable_name
   end
 
   def test_parents
-    singleton!
-    assert_equal [], @r.parents
+    r1 = singleton(:project)
+    r2 = r1.many(:todos)
+    r3 = r2.one
 
-    r2 = @r.singleton(:statistic) { }
-    assert_equal [@r], r2.parents
-
-    r3 = r2.singleton(:statistic) { }
-    assert_equal [@r, r2], r3.parents
+    assert_equal [], r1.parents
+    assert_equal [r1], r2.parents
+    assert_equal [r1, r2], r3.parents
   end
 
   def test_self_and_parents
-    singleton!
-    assert_equal [@r], @r.self_and_parents
+    r1 = singleton(:project)
+    r2 = r1.many(:todos)
+    r3 = r2.one
 
-    r2 = @r.singleton(:statistic) { }
-    assert_equal [r2, @r], r2.self_and_parents
-
-    r3 = r2.singleton(:statistic) { }
-    assert_equal [r3, r2, @r], r3.self_and_parents
+    assert_equal [r1], r1.self_and_parents
+    assert_equal [r2, r1], r2.self_and_parents
+    assert_equal [r3, r2, r1], r3.self_and_parents
   end
 
   def test_create_sinatra_route
-    @sinatra.expects(:nested_config).at_least_once.returns({})
+    # get
 
-    singleton!
-
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:get, "/project")
-    block = ->{ }
-    @r.create_sinatra_route(:get, nil, &block)
-    assert_equal [{method: :get, action: nil, block: block}], @r.actions
+    singleton(:project).get
 
-    singleton!
+    @sinatra.expects(:nested_config).returns({})
+    @sinatra.expects(:send).with(:get, "/project/action")
+    singleton(:project).get(:action)
 
+    # post
+
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:post, "/project")
-    @r.create_sinatra_route(:post, nil, &block)
-    assert_equal [{method: :post, action: nil, block: block}], @r.actions
+    singleton(:project).post
 
-    singleton!
-
+    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:post, "/project/action")
-    @r.create_sinatra_route(:post, :action, &block)
-    assert_equal [{method: :post, action: :action, block: block}], @r.actions
+    singleton(:project).post(:action)
+
+    # put
+
+    @sinatra.expects(:nested_config).returns({})
+    @sinatra.expects(:send).with(:put, "/project")
+    singleton(:project).put
+
+    @sinatra.expects(:nested_config).returns({})
+    @sinatra.expects(:send).with(:put, "/project/action")
+    singleton(:project).put(:action)
+
+    # delete
+
+    @sinatra.expects(:nested_config).returns({})
+    @sinatra.expects(:send).with(:delete, "/project")
+    singleton(:project).delete
+
+    @sinatra.expects(:nested_config).returns({})
+    @sinatra.expects(:send).with(:delete, "/project/action")
+    singleton(:project).delete(:action)
   end
 
-  def test_serializer
-    singleton!
 
-    @r.serialize :name
+  # def test_serializer
+  #   singleton!
 
-    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
-    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe", boss: true}))
-    assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call(OpenStruct.new({name: "joe"})))
+  #   @r.serialize :name
 
-    @r.serialize :name, virtual: ->(o){ o[:name] + "!!" }
-    assert_equal({name: "joe", virtual: "joe!!"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
-  end
+  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
+  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe", boss: true}))
+  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call(OpenStruct.new({name: "joe"})))
 
-  # ----
+  #   @r.serialize :name, virtual: ->(o){ o[:name] + "!!" }
+  #   assert_equal({name: "joe", virtual: "joe!!"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
+  # end
+
+  # # ----
 
   def test_sinatra_response_type
-    singleton!
-    assert_equal :error, @r.sinatra_response_type(ActiveModel::Errors.new({}))
+    assert_equal :error, singleton(:project).sinatra_response_type(ActiveModel::Errors.new({}))
 
     obj = OpenStruct.new(errors: ActiveModel::Errors.new({}))
-    assert_equal :data, @r.sinatra_response_type(obj)
+    assert_equal :data, singleton(:project).sinatra_response_type(obj)
 
     obj.errors.add(:somefield, "some error")
-    assert_equal :error, @r.sinatra_response_type(obj)
+    assert_equal :error, singleton(:project).sinatra_response_type(obj)
 
-    assert_equal :data, @r.sinatra_response_type(nil)
-    assert_equal :data, @r.sinatra_response_type(123)
+    assert_equal :data, singleton(:project).sinatra_response_type(nil)
+    assert_equal :data, singleton(:project).sinatra_response_type(123)
   end
 
 
-  # ----
-
+  # # ----
 
   def test_function_name
-    singleton!
-    assert_equal "project", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "updateProject", Nested::JsUtil::generate_function_name(@r, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
-    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+    resource = singleton(:project)
 
-    assert_equal "projectAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
-    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
-    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
+    assert_equal "project", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "updateProject", Nested::JsUtil::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(resource, :delete, nil)
 
-    collection!
-    assert_equal "projects", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "updateProjects", Nested::JsUtil::generate_function_name(@r, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
-    assert_equal "destroyProjects", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+    assert_equal "projectAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
 
-    assert_equal "projectsAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
-    assert_equal "updateProjectsAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
-    assert_equal "destroyProjectsAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
+    resource = many(:projects)
 
-    member!
-    assert_equal "project", Nested::JsUtil::generate_function_name(@r, :get, nil)
-    assert_equal "updateProject", Nested::JsUtil::generate_function_name(@r, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(@r, :post, nil)
-    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(@r, :delete, nil)
+    assert_equal "projects", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjects", Nested::JsUtil::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjects", Nested::JsUtil::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectAction", Nested::JsUtil::generate_function_name(@r, :get, :action)
-    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(@r, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(@r, :post, :action)
-    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(@r, :delete, :action)
+    assert_equal "projectsAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectsAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectsAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
 
+    resource = many(:projects).one
 
-    # with parent
+    assert_equal "project", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "updateProject", Nested::JsUtil::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(resource, :delete, nil)
 
-    singleton!
+    assert_equal "projectAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
 
-    r2 = @r.singleton(:statistic) {}
+    resource = singleton(:project).many(:statistics)
 
-    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
-    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
-    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
+    assert_equal "projectStatistics", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjectStatistics", Nested::JsUtil::generate_function_name(resource, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjectStatistics", Nested::JsUtil::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
-    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
-    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
+    assert_equal "projectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
 
-    member!
+    resource = singleton(:project).many(:statistics).one
 
-    r2 = @r.singleton(:statistic) {}
+    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(resource, :put, nil)
+    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
-    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
-    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
+    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
 
-    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
-    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
-    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
-
-    collection!
-
-    r2 = @r.singleton(:statistic) {}
-
-    assert_equal "projectsStatistic", Nested::JsUtil::generate_function_name(r2, :get, nil)
-    assert_equal "updateProjectsStatistic", Nested::JsUtil::generate_function_name(r2, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
-    assert_equal "destroyProjectsStatistic", Nested::JsUtil::generate_function_name(r2, :delete, nil)
-
-    assert_equal "projectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :get, :action)
-    assert_equal "updateProjectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r2, :post, :action)
-    assert_equal "destroyProjectsStatisticAction", Nested::JsUtil::generate_function_name(r2, :delete, :action)
-
-    singleton!
-
-    r2 = @r.many(:statistics) {}
-    r3 = r2.one {}
-
-    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(r3, :get, nil)
-    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(r3, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r3, :post, nil)
-    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(r3, :delete, nil)
-
-    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(r3, :get, :action)
-    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :post, :action)
-    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(r3, :delete, :action)
-
-
-    singleton!
-    r2 = @r.many(:statistics) {}
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(r2, :post, nil)
-
-
-    singleton!
-    r2 = @r.many(:statistics) {}
-    r3 = r2.singleton(:user) {}
-
-    assert_equal "projectStatisticsUser", Nested::JsUtil::generate_function_name(r3, :get, nil)
-
-    singleton!
-    r2 = @r.many(:statistics) {}
-    r3 = r2.one {}
-    r4 = r3.singleton(:user) {}
-
-    assert_equal "projectStatisticUser", Nested::JsUtil::generate_function_name(r4, :get, nil)
+    resource = singleton(:project).many(:statistics).one.many(:entries)
+    assert_equal "projectStatisticEntries", Nested::JsUtil::generate_function_name(resource, :get, nil)
   end
 
-  # -----------------
-
   def test_function_arguments
-    # --- singleton
-    singleton!
-    assert_equal [], Nested::JsUtil.function_arguments(@r)
+    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project))
+    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project).singleton(:statistic))
+    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project).many(:statistics))
+    assert_equal ["statistic"], Nested::JsUtil.function_arguments(singleton(:project).many(:statistics).one)
 
-    singleton!
-    assert_equal [], Nested::JsUtil.function_arguments(@r.singleton(:statistic) {})
+    assert_equal [], Nested::JsUtil.function_arguments(many(:projects))
+    assert_equal [], Nested::JsUtil.function_arguments(many(:projects).singleton(:statistic))
+    assert_equal ["project"], Nested::JsUtil.function_arguments(many(:projects).one)
 
-    singleton!
-    assert_equal [], Nested::JsUtil.function_arguments(@r.many(:statistics) {})
-
-    singleton!
-    assert_equal ["statistic"], Nested::JsUtil.function_arguments(@r.one(:statistic) {})
-
-    singleton!
-    r2 = @r.one(:statistic) {}
-    r3 = r2.singleton(:test) {}
-    assert_equal ["statistic"], Nested::JsUtil.function_arguments(r3)
-
-    # --- member
-
-    member!
-    assert_equal ["project"], Nested::JsUtil.function_arguments(@r)
-
-    member!
-    assert_equal ["project"], Nested::JsUtil.function_arguments(@r.singleton(:statistic) {})
-
-    member!
-    assert_equal ["project"], Nested::JsUtil.function_arguments(@r.many(:statistics) {})
-
-    member!
-    assert_equal ["project", "statistic"], Nested::JsUtil.function_arguments(@r.one(:statistic) {})
-
-    # --- collection
-
-    collection!
-    assert_equal [], Nested::JsUtil.function_arguments(@r)
-
-    collection!
-    assert_equal [], Nested::JsUtil.function_arguments(@r.singleton(:statistic) {})
-
-    collection!
-    assert_equal ["project"], Nested::JsUtil.function_arguments(@r.one {})
-
-    collection!
-    r2 = @r.one {}
-    r3 = r2.one(:statistic) {}
-
-    assert_equal ["project", "statistic"], Nested::JsUtil.function_arguments(r3)
+    assert_equal ["project"], Nested::JsUtil.function_arguments(many(:projects).one.singleton(:today))
+    assert_equal [], Nested::JsUtil.function_arguments(many(:projects).singleton(:statistic).singleton(:today))
+    assert_equal ["project", "entry"], Nested::JsUtil.function_arguments(many(:projects).one.many(:entries).one)
   end
 
 end
