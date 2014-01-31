@@ -2,9 +2,6 @@ require "json"
 
 module Nested
 
-  class OneWithNameInManyError < StandardError
-  end
-
   class ManyInManyError < StandardError
   end
 
@@ -352,7 +349,6 @@ module Nested
       resource = self
 
       route = resource.route(action)
-      puts "sinatra router [#{method}] #{@sinatra.nested_config[:prefix]}#{route}"
 
       @sinatra.send(method, route) do
         def self.error(message)
@@ -525,29 +521,21 @@ module Nested
       arr << "create" if method == :post
       arr << "destroy" if method == :delete
 
-      parents = resource.parents
-      parents.each_with_index do |p, idx|
-        if p.collection? && method != :post && ((parents[idx + 1] && parents[idx + 1].singleton?) || parents.last == p)
-          arr << p.name.to_s.send(:pluralize)
-        else
-          arr << p.name.to_s.send(:singularize)
-        end
-      end
+      all = resource.self_and_parents.reverse
 
-      if resource.member?
-        if resource.parent
-          arr = arr.slice(0...-1)
-          arr << resource.parent.name.to_s.send(:singularize)
+      all.each do |e|
+        if e.collection?
+          if e == all.last
+            if method == :post
+              arr << e.name.to_s.singularize.to_sym
+            else
+              arr << e.name
+            end
+          else
+            arr << e.name unless all[all.index(e) + 1].member?
+          end
         else
-          arr << resource.name.to_s.send(:singularize)
-        end
-      elsif resource.singleton?
-        arr << resource.name.to_s.send(:singularize)
-      elsif resource.collection?
-        if method == :post
-          arr << resource.name.to_s.send(:singularize)
-        else
-          arr << resource.name.to_s.send(:pluralize)
+          arr << e.name
         end
       end
 
@@ -579,9 +567,6 @@ module Nested
     end
     def many(name, init_block=nil, &block)
       create_resource(name, false, true, init_block, &block)
-    end
-    def one(name, init_block=nil, &block)
-      create_resource(name, false, false, init_block, &block)
     end
     def create_resource(name, singleton, collection, init_block, &block)
       ::Nested::Resource.new(self, name, singleton, collection, nil, init_block).tap{|r| r.instance_eval(&block) }

@@ -4,29 +4,11 @@ require "active_support/all"
 require "active_model/errors"
 require "active_record"
 require "nested"
+require "./test/test_helper"
 
 class NestedTest < Test::Unit::TestCase
 
-  # def singleton!
-  #   @r = Nested::Resource.new(@sinatra, :project, true, false, nil, nil)
-  # end
-
-  # def collection!(instance_variable_name: "@r", resource_name: :project)
-  #   instance_variable_set(instance_variable_name, Nested::Resource.new(@sinatra, resource_name, false, true, nil, nil))
-  # end
-
-  # def member!(resource_name: :project, parent_resource_name: :projects)
-  #   collection! instance_variable_name: "@r_parent", resource_name: parent_resource_name
-  #   @r = Nested::Resource.new(@sinatra, resource_name, false, false, @r_parent, nil)
-  # end
-
-  def singleton(name)
-    Nested::Resource.new(@sinatra, name, true, false, nil, nil)
-  end
-
-  def many(name)
-    Nested::Resource.new(@sinatra, name, false, true, nil, nil)
-  end
+  include TestHelper
 
   def setup
     @sinatra = mock
@@ -230,41 +212,33 @@ class NestedTest < Test::Unit::TestCase
   def test_create_sinatra_route
     # get
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:get, "/project")
     singleton(:project).get
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:get, "/project/action")
     singleton(:project).get(:action)
 
     # post
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:post, "/project")
     singleton(:project).post
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:post, "/project/action")
     singleton(:project).post(:action)
 
     # put
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:put, "/project")
     singleton(:project).put
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:put, "/project/action")
     singleton(:project).put(:action)
 
     # delete
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:delete, "/project")
     singleton(:project).delete
 
-    @sinatra.expects(:nested_config).returns({})
     @sinatra.expects(:send).with(:delete, "/project/action")
     singleton(:project).delete(:action)
   end
