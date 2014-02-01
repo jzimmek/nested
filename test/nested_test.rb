@@ -16,11 +16,11 @@ class NestedTest < Test::Unit::TestCase
 
   def test_initialize_name
     assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, true, false, nil, nil)
+      Nested::Resource.new({}, nil, true, false, nil, Nested::Resource::PROC_TRUE, nil)
     end
 
     assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, false, true, nil, nil)
+      Nested::Resource.new({}, nil, false, true, nil, Nested::Resource::PROC_TRUE, nil)
     end
   end
 
@@ -41,11 +41,6 @@ class NestedTest < Test::Unit::TestCase
     assert_equal false, many(:projects).member?
     assert_equal false, singleton(:project).member?
   end
-
-  # def test_init
-  #   init = ->{ }
-  #   assert_equal init, singleton(:project).init(&init).instance_variable_get("@__init")
-  # end
 
   def test_serialize
     serializer = mock()
@@ -98,31 +93,31 @@ class NestedTest < Test::Unit::TestCase
 
   def test_singleton
     resource = singleton(:project)
-    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
     resource.singleton(:statistic)
 
     resource = many(:projects)
-    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
     resource.singleton(:statistic)
 
     resource = many(:projects).one
-    resource.expects(:child_resource).with(:statistic, true, false, nil)
+    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
     resource.singleton(:statistic)
   end
 
   def test_one
     resource = many(:projects)
-    resource.expects(:child_resource).with(:project, false, false, nil)
+    resource.expects(:child_resource).with(:project, false, false, Nested::Resource::PROC_TRUE, nil)
     resource.one
   end
 
   def test_many
     resource = singleton(:project)
-    resource.expects(:child_resource).with(:statistics, false, true, nil)
+    resource.expects(:child_resource).with(:statistics, false, true, Nested::Resource::PROC_TRUE, nil)
     resource.many(:statistics)
 
     resource = singleton(:project).many(:statistics).one
-    resource.expects(:child_resource).with(:entries, false, true, nil)
+    resource.expects(:child_resource).with(:entries, false, true, Nested::Resource::PROC_TRUE, nil)
     resource.many(:entries)
   end
 
@@ -167,17 +162,17 @@ class NestedTest < Test::Unit::TestCase
   end
 
   def test_child_resource
-    resource = singleton(:project).child_resource(:statistic, false, false, nil) { }
+    resource = singleton(:project).child_resource(:statistic, false, false, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
     assert_equal false, resource.instance_variable_get("@singleton")
     assert_equal false, resource.instance_variable_get("@collection")
 
-    resource = singleton(:project).child_resource(:statistic, true, false, nil) { }
+    resource = singleton(:project).child_resource(:statistic, true, false, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
     assert_equal true, resource.instance_variable_get("@singleton")
     assert_equal false, resource.instance_variable_get("@collection")
 
-    resource = singleton(:project).child_resource(:statistic, false, true, nil) { }
+    resource = singleton(:project).child_resource(:statistic, false, true, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
     assert_equal false, resource.instance_variable_get("@singleton")
     assert_equal true, resource.instance_variable_get("@collection")

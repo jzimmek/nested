@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name               = "nested"
-  s.version            = "0.0.25"
+  s.version            = "0.0.26"
 
   s.authors = ["Jan Zimmek"]
   s.email = %q{jan.zimmek@web.de}

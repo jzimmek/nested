@@ -71,9 +71,11 @@ module Nested
   end
 
   class Resource
-    attr_reader :name, :parent, :actions, :resources, :serializer
+    attr_reader :name, :parent, :actions, :resources, :serializer, :init_block
 
-    def initialize(sinatra, name, singleton, collection, parent, init_block)
+    PROC_TRUE = Proc.new{ true }
+
+    def initialize(sinatra, name, singleton, collection, parent, resource_if_block, init_block)
       raise SingletonAndCollectionError.new if singleton && collection
       raise NameMissingError.new if (singleton || collection) && !name
 
@@ -84,7 +86,8 @@ module Nested
       @parent = parent
       @resources = []
       @actions = []
-      @init_block = init_block
+      @init_block = init_block||parent.try(:init_block)
+      @resource_if_block = resource_if_block
       @run_blocks = []
 
       @serializer = Serializer.new(member? ? parent.serializer.includes : [])
@@ -171,12 +174,20 @@ module Nested
     end
 
     def singleton(name, init_block=nil, &block)
-      child_resource(name, true, false, init_block, &(block||Proc.new{ }))
+      singleton_if(PROC_TRUE, name, init_block, &block)
+    end
+
+    def singleton_if(resource_if_block, name, init_block=nil, &block)
+      child_resource(name, true, false, resource_if_block, init_block, &(block||Proc.new{ }))
     end
 
     def many(name, init_block=nil, &block)
+      many_if(PROC_TRUE, name, init_block, &block)
+    end
+
+    def many_if(resource_if_block, name, init_block=nil, &block)
       raise ManyInManyError.new "do not nest many in many" if collection?
-      child_resource(name, false, true, init_block, &(block||Proc.new{ }))
+      child_resource(name, false, true, resource_if_block, init_block, &(block||Proc.new{ }))
     end
 
     def default_init_block_singleton
@@ -208,12 +219,16 @@ module Nested
     end
 
     def one(&block)
-      raise "calling one() is only allowed within many() resource" unless collection?
-      child_resource(self.name.to_s.singularize.to_sym, false, false, nil, &(block||Proc.new{ }))
+      one_if(PROC_TRUE, &block)
     end
 
-    def child_resource(name, singleton, collection, init_block, &block)
-       Resource.new(@sinatra, name, singleton, collection, self, init_block)
+    def one_if(resource_if_block, &block)
+      raise "calling one() is only allowed within many() resource" unless collection?
+      child_resource(self.name.to_s.singularize.to_sym, false, false, resource_if_block, nil, &(block||Proc.new{ }))
+    end
+
+    def child_resource(name, singleton, collection, resource_if_block, init_block, &block)
+       Resource.new(@sinatra, name, singleton, collection, self, resource_if_block, init_block)
         .tap{|r| r.instance_eval(&block)}
         .tap{|r| @resources << r}
     end
@@ -239,6 +254,8 @@ module Nested
 
     def sinatra_init(sinatra)
       sinatra.instance_variable_set("@__resource", self)
+
+      raise "resource_if is false for resource: #{self.name} " unless sinatra.instance_exec(&@resource_if_block)
 
       init_block = if @init_block
         @init_block
@@ -563,13 +580,19 @@ module Nested
       end
     end
     def singleton(name, init_block=nil, &block)
-      create_resource(name, true, false, init_block, &block)
+      singleton_if(Nested::Resource::PROC_TRUE, name, init_block, &block)
+    end
+    def singleton_if(resource_if_block, name, init_block=nil, &block)
+      create_resource(name, true, false, resource_if_block, init_block, &block)
     end
     def many(name, init_block=nil, &block)
-      create_resource(name, false, true, init_block, &block)
+      many_if(Nested::Resource::PROC_TRUE, name, init_block, &block)
     end
-    def create_resource(name, singleton, collection, init_block, &block)
-      ::Nested::Resource.new(self, name, singleton, collection, nil, init_block).tap{|r| r.instance_eval(&block) }
+    def many_if(resource_if_block, name, init_block=nil, &block)
+      create_resource(name, false, true, resource_if_block, init_block, &block)
+    end
+    def create_resource(name, singleton, collection, resource_if_block, init_block, &block)
+      ::Nested::Resource.new(self, name, singleton, collection, nil, resource_if_block, init_block).tap{|r| r.instance_eval(&block) }
     end
   end
 
