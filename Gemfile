@@ -4,5 +4,6 @@ source 'https://rubygems.org'
 
 gem "activesupport"
 gem "activerecord"
+gem "sinatra"
 gem "mocha"
 gem "json"

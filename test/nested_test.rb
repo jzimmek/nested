@@ -242,81 +242,81 @@ class NestedTest < Test::Unit::TestCase
   def test_function_name
     resource = singleton(:project)
 
-    assert_equal "project", Nested::JsUtil::generate_function_name(resource, :get, nil)
-    assert_equal "updateProject", Nested::JsUtil::generate_function_name(resource, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
-    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(resource, :delete, nil)
+    assert_equal "project", Nested::Js::generate_function_name(resource, :get, nil)
+    assert_equal "updateProject", Nested::Js::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::Js::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProject", Nested::Js::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
-    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
-    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
+    assert_equal "projectAction", Nested::Js::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectAction", Nested::Js::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::Js::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectAction", Nested::Js::generate_function_name(resource, :delete, :action)
 
     resource = many(:projects)
 
-    assert_equal "projects", Nested::JsUtil::generate_function_name(resource, :get, nil)
-    assert_equal "updateProjects", Nested::JsUtil::generate_function_name(resource, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
-    assert_equal "destroyProjects", Nested::JsUtil::generate_function_name(resource, :delete, nil)
+    assert_equal "projects", Nested::Js::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjects", Nested::Js::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::Js::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjects", Nested::Js::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectsAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
-    assert_equal "updateProjectsAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
-    assert_equal "destroyProjectsAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
+    assert_equal "projectsAction", Nested::Js::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectsAction", Nested::Js::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::Js::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectsAction", Nested::Js::generate_function_name(resource, :delete, :action)
 
     resource = many(:projects).one
 
-    assert_equal "project", Nested::JsUtil::generate_function_name(resource, :get, nil)
-    assert_equal "updateProject", Nested::JsUtil::generate_function_name(resource, :put, nil)
-    assert_equal "createProject", Nested::JsUtil::generate_function_name(resource, :post, nil)
-    assert_equal "destroyProject", Nested::JsUtil::generate_function_name(resource, :delete, nil)
+    assert_equal "project", Nested::Js::generate_function_name(resource, :get, nil)
+    assert_equal "updateProject", Nested::Js::generate_function_name(resource, :put, nil)
+    assert_equal "createProject", Nested::Js::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProject", Nested::Js::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
-    assert_equal "updateProjectAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
-    assert_equal "createProjectAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
-    assert_equal "destroyProjectAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
+    assert_equal "projectAction", Nested::Js::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectAction", Nested::Js::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectAction", Nested::Js::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectAction", Nested::Js::generate_function_name(resource, :delete, :action)
 
     resource = singleton(:project).many(:statistics)
 
-    assert_equal "projectStatistics", Nested::JsUtil::generate_function_name(resource, :get, nil)
-    assert_equal "updateProjectStatistics", Nested::JsUtil::generate_function_name(resource, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(resource, :post, nil)
-    assert_equal "destroyProjectStatistics", Nested::JsUtil::generate_function_name(resource, :delete, nil)
+    assert_equal "projectStatistics", Nested::Js::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjectStatistics", Nested::Js::generate_function_name(resource, :put, nil)
+    assert_equal "createProjectStatistic", Nested::Js::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjectStatistics", Nested::Js::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
-    assert_equal "updateProjectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
-    assert_equal "destroyProjectStatisticsAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
+    assert_equal "projectStatisticsAction", Nested::Js::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectStatisticsAction", Nested::Js::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::Js::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectStatisticsAction", Nested::Js::generate_function_name(resource, :delete, :action)
 
     resource = singleton(:project).many(:statistics).one
 
-    assert_equal "projectStatistic", Nested::JsUtil::generate_function_name(resource, :get, nil)
-    assert_equal "updateProjectStatistic", Nested::JsUtil::generate_function_name(resource, :put, nil)
-    assert_equal "createProjectStatistic", Nested::JsUtil::generate_function_name(resource, :post, nil)
-    assert_equal "destroyProjectStatistic", Nested::JsUtil::generate_function_name(resource, :delete, nil)
+    assert_equal "projectStatistic", Nested::Js::generate_function_name(resource, :get, nil)
+    assert_equal "updateProjectStatistic", Nested::Js::generate_function_name(resource, :put, nil)
+    assert_equal "createProjectStatistic", Nested::Js::generate_function_name(resource, :post, nil)
+    assert_equal "destroyProjectStatistic", Nested::Js::generate_function_name(resource, :delete, nil)
 
-    assert_equal "projectStatisticAction", Nested::JsUtil::generate_function_name(resource, :get, :action)
-    assert_equal "updateProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :put, :action)
-    assert_equal "createProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :post, :action)
-    assert_equal "destroyProjectStatisticAction", Nested::JsUtil::generate_function_name(resource, :delete, :action)
+    assert_equal "projectStatisticAction", Nested::Js::generate_function_name(resource, :get, :action)
+    assert_equal "updateProjectStatisticAction", Nested::Js::generate_function_name(resource, :put, :action)
+    assert_equal "createProjectStatisticAction", Nested::Js::generate_function_name(resource, :post, :action)
+    assert_equal "destroyProjectStatisticAction", Nested::Js::generate_function_name(resource, :delete, :action)
 
     resource = singleton(:project).many(:statistics).one.many(:entries)
-    assert_equal "projectStatisticEntries", Nested::JsUtil::generate_function_name(resource, :get, nil)
+    assert_equal "projectStatisticEntries", Nested::Js::generate_function_name(resource, :get, nil)
   end
 
   def test_function_arguments
-    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project))
-    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project).singleton(:statistic))
-    assert_equal [], Nested::JsUtil.function_arguments(singleton(:project).many(:statistics))
-    assert_equal ["statistic"], Nested::JsUtil.function_arguments(singleton(:project).many(:statistics).one)
+    assert_equal [], Nested::Js.function_arguments(singleton(:project))
+    assert_equal [], Nested::Js.function_arguments(singleton(:project).singleton(:statistic))
+    assert_equal [], Nested::Js.function_arguments(singleton(:project).many(:statistics))
+    assert_equal ["statistic"], Nested::Js.function_arguments(singleton(:project).many(:statistics).one)
 
-    assert_equal [], Nested::JsUtil.function_arguments(many(:projects))
-    assert_equal [], Nested::JsUtil.function_arguments(many(:projects).singleton(:statistic))
-    assert_equal ["project"], Nested::JsUtil.function_arguments(many(:projects).one)
+    assert_equal [], Nested::Js.function_arguments(many(:projects))
+    assert_equal [], Nested::Js.function_arguments(many(:projects).singleton(:statistic))
+    assert_equal ["project"], Nested::Js.function_arguments(many(:projects).one)
 
-    assert_equal ["project"], Nested::JsUtil.function_arguments(many(:projects).one.singleton(:today))
-    assert_equal [], Nested::JsUtil.function_arguments(many(:projects).singleton(:statistic).singleton(:today))
-    assert_equal ["project", "entry"], Nested::JsUtil.function_arguments(many(:projects).one.many(:entries).one)
+    assert_equal ["project"], Nested::Js.function_arguments(many(:projects).one.singleton(:today))
+    assert_equal [], Nested::Js.function_arguments(many(:projects).singleton(:statistic).singleton(:today))
+    assert_equal ["project", "entry"], Nested::Js.function_arguments(many(:projects).one.many(:entries).one)
   end
 
 end
