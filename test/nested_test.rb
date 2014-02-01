@@ -14,16 +14,6 @@ class NestedTest < Test::Unit::TestCase
     @sinatra = mock
   end
 
-  def test_initialize_name
-    assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, true, false, nil, Nested::Resource::PROC_TRUE, nil)
-    end
-
-    assert_raise Nested::NameMissingError do
-      Nested::Resource.new({}, nil, false, true, nil, Nested::Resource::PROC_TRUE, nil)
-    end
-  end
-
   def test_is_singleton
     assert_equal true, singleton(:project).singleton?
     assert_equal false, many(:projects).singleton?
@@ -124,45 +114,45 @@ class NestedTest < Test::Unit::TestCase
   def test_get
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:get, nil)
+    resource.expects(:create_sinatra_route).with(:get, nil, Nested::Resource::PROC_TRUE)
     resource.get
 
-    resource.expects(:create_sinatra_route).with(:get, :action)
+    resource.expects(:create_sinatra_route).with(:get, :action, Nested::Resource::PROC_TRUE)
     resource.get :action
   end
 
   def test_post
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:post, nil)
+    resource.expects(:create_sinatra_route).with(:post, nil, Nested::Resource::PROC_TRUE)
     resource.post
 
-    resource.expects(:create_sinatra_route).with(:post, :action)
+    resource.expects(:create_sinatra_route).with(:post, :action, Nested::Resource::PROC_TRUE)
     resource.post :action
   end
 
   def test_put
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:put, nil)
+    resource.expects(:create_sinatra_route).with(:put, nil, Nested::Resource::PROC_TRUE)
     resource.put
 
-    resource.expects(:create_sinatra_route).with(:put, :action)
+    resource.expects(:create_sinatra_route).with(:put, :action, Nested::Resource::PROC_TRUE)
     resource.put :action
   end
 
   def test_delete
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:delete, nil)
+    resource.expects(:create_sinatra_route).with(:delete, nil, Nested::Resource::PROC_TRUE)
     resource.delete
 
-    resource.expects(:create_sinatra_route).with(:delete, :action)
+    resource.expects(:create_sinatra_route).with(:delete, :action, Nested::Resource::PROC_TRUE)
     resource.delete :action
   end
 
   def test_child_resource
-    resource = singleton(:project).child_resource(:statistic, false, false, Proc.new{ true}, nil) { }
+    resource = many(:projects).child_resource(:statistic, false, false, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
     assert_equal false, resource.instance_variable_get("@singleton")
     assert_equal false, resource.instance_variable_get("@collection")

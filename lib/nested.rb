@@ -2,15 +2,6 @@ require "json"
 
 module Nested
 
-  class ManyInManyError < StandardError
-  end
-
-  class SingletonAndCollectionError < StandardError
-  end
-
-  class NameMissingError < StandardError
-  end
-
   class Redirect
     attr_reader :url
     def initialize(url)
@@ -76,8 +67,16 @@ module Nested
     PROC_TRUE = Proc.new{ true }
 
     def initialize(sinatra, name, singleton, collection, parent, resource_if_block, init_block)
-      raise SingletonAndCollectionError.new if singleton && collection
-      raise NameMissingError.new if (singleton || collection) && !name
+      raise "resource must be given a name" unless name
+      raise "resource can be either singleton, collection or is otherwise treated as member" if singleton && collection
+
+      if singleton # resource type: singleton
+
+      elsif collection # resource type: many
+        raise "many() in many() is not allowed" if parent && parent.collection?
+      else # resource type: one
+        raise "a member is only allowed within a collection" unless parent.collection?
+      end
 
       @sinatra = sinatra
       @name = name
@@ -86,9 +85,24 @@ module Nested
       @parent = parent
       @resources = []
       @actions = []
-      @init_block = init_block||parent.try(:init_block)
+
+      raise "resource_if_block is nil, pass Nested::Resource::PROC_TRUE instead" unless resource_if_block
       @resource_if_block = resource_if_block
-      @run_blocks = []
+
+      unless @init_block = init_block
+        if singleton
+          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block_singleton
+        elsif collection
+          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block_many
+        else
+          @init_block = default_init_block_one
+        end
+      end
+
+      raise "no init_block passed and could not lookup any parent or default init_block" unless @init_block
+
+      @before_blocks = []
+      @after_blocks = []
 
       @serializer = Serializer.new(member? ? parent.serializer.includes : [])
     end
@@ -105,8 +119,13 @@ module Nested
       @collection == true
     end
 
-    def run(&block)
-      @run_blocks << block
+    def before(&block)
+      @before_blocks << block
+      self
+    end
+
+    def after(&block)
+      @after_blocks << block
       self
     end
 
@@ -146,7 +165,6 @@ module Nested
       "".tap do |r|
         r << @parent.route if @parent
 
-
         if singleton? || collection?
           r << "/#{@name}"
         else
@@ -157,20 +175,16 @@ module Nested
       end
     end
 
-    def get(action=nil, &block)
-      create_sinatra_route :get, action, &(block||proc {})
-    end
+    [:get, :post, :put, :delete].each do |method|
+      instance_eval do
+        define_method method do |action=nil, &block|
+          send(:"#{method}_if", PROC_TRUE, action, &block)
+        end
 
-    def post(action=nil, &block)
-      create_sinatra_route :post, action, &block
-    end
-
-    def put(action=nil, &block)
-      create_sinatra_route :put, action, &block
-    end
-
-    def delete(action=nil, &block)
-      create_sinatra_route :delete, action, &block
+        define_method :"#{method}_if" do |method_if_block, action=nil, &block|
+          create_sinatra_route method, action, method_if_block, &(block||proc {})
+        end
+      end
     end
 
     def singleton(name, init_block=nil, &block)
@@ -186,8 +200,21 @@ module Nested
     end
 
     def many_if(resource_if_block, name, init_block=nil, &block)
-      raise ManyInManyError.new "do not nest many in many" if collection?
       child_resource(name, false, true, resource_if_block, init_block, &(block||Proc.new{ }))
+    end
+
+    def one(&block)
+      one_if(PROC_TRUE, &block)
+    end
+
+    def one_if(resource_if_block, &block)
+      child_resource(self.name.to_s.singularize.to_sym, false, false, resource_if_block, nil, &(block||Proc.new{ }))
+    end
+
+    def child_resource(name, singleton, collection, resource_if_block, init_block, &block)
+       Resource.new(@sinatra, name, singleton, collection, self, resource_if_block, init_block)
+        .tap{|r| r.instance_eval(&block)}
+        .tap{|r| @resources << r}
     end
 
     def default_init_block_singleton
@@ -216,21 +243,6 @@ module Nested
       else
         Proc.new { nil }
       end
-    end
-
-    def one(&block)
-      one_if(PROC_TRUE, &block)
-    end
-
-    def one_if(resource_if_block, &block)
-      raise "calling one() is only allowed within many() resource" unless collection?
-      child_resource(self.name.to_s.singularize.to_sym, false, false, resource_if_block, nil, &(block||Proc.new{ }))
-    end
-
-    def child_resource(name, singleton, collection, resource_if_block, init_block, &block)
-       Resource.new(@sinatra, name, singleton, collection, self, resource_if_block, init_block)
-        .tap{|r| r.instance_eval(&block)}
-        .tap{|r| @resources << r}
     end
 
     def instance_variable_name
@@ -269,9 +281,11 @@ module Nested
         end
       end
 
+      @before_blocks.each{|e| sinatra.instance_exec(&e)}
+
       sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&init_block))
 
-      @run_blocks.each{|e| sinatra.instance_exec(&e)}
+      @after_blocks.each{|e| sinatra.instance_exec(&e)}
     end
 
     def sinatra_exec_get_block(sinatra, &block)
@@ -360,7 +374,7 @@ module Nested
       {data: sinatra_errors_to_hash(errors), ok: false}
     end
 
-    def create_sinatra_route(method, action, &block)
+    def create_sinatra_route(method, action, method_if_block, &block)
       @actions << {method: method, action: action, block: block}
 
       resource = self
@@ -382,6 +396,8 @@ module Nested
           resource.self_and_parents.reverse.each do |res|
             res.sinatra_init(self)
           end
+
+          raise "method_if_block returns false for method: #{method}, action: #{action}, resource: #{resource.name}" unless instance_exec(&method_if_block)
 
           resource.send(:"sinatra_exec_#{method}_block", self, &block)
 
