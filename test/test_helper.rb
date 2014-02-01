@@ -1,9 +1,9 @@
 module TestHelper
   def singleton(name)
-    Nested::Resource.new(@sinatra, name, true, false, nil, Nested::Resource::PROC_TRUE, nil)
+    Nested::Singleton.new(@sinatra, name, nil, Nested::PROC_TRUE, nil)
   end
 
   def many(name)
-    Nested::Resource.new(@sinatra, name, false, true, nil, Nested::Resource::PROC_TRUE, nil)
+    Nested::Many.new(@sinatra, name, nil, Nested::PROC_TRUE, nil)
   end
 end

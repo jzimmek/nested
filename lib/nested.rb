@@ -2,6 +2,8 @@ require "json"
 
 module Nested
 
+  PROC_TRUE = Proc.new{ true }
+
   class Redirect
     attr_reader :url
     def initialize(url)
@@ -61,41 +63,36 @@ module Nested
     end
   end
 
+  module WithMany
+    def many(name, init_block=nil, &block)
+      many_if(PROC_TRUE, name, init_block, &block)
+    end
+
+    def many_if(resource_if_block, name, init_block=nil, &block)
+      child_resource(name, Many, resource_if_block, init_block, &block)
+    end
+  end
+
   class Resource
     attr_reader :name, :parent, :actions, :resources, :serializer, :init_block
 
-    PROC_TRUE = Proc.new{ true }
-
-    def initialize(sinatra, name, singleton, collection, parent, resource_if_block, init_block)
+    def initialize(sinatra, name, parent, resource_if_block, init_block)
       raise "resource must be given a name" unless name
-      raise "resource can be either singleton, collection or is otherwise treated as member" if singleton && collection
-
-      if singleton # resource type: singleton
-
-      elsif collection # resource type: many
-        raise "many() in many() is not allowed" if parent && parent.collection?
-      else # resource type: one
-        raise "a member is only allowed within a collection" unless parent.collection?
-      end
 
       @sinatra = sinatra
       @name = name
-      @singleton = singleton
-      @collection = collection
       @parent = parent
       @resources = []
       @actions = []
 
-      raise "resource_if_block is nil, pass Nested::Resource::PROC_TRUE instead" unless resource_if_block
+      raise "resource_if_block is nil, pass Nested::PROC_TRUE instead" unless resource_if_block
       @resource_if_block = resource_if_block
 
       unless @init_block = init_block
-        if singleton
-          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block_singleton
-        elsif collection
-          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block_many
+        if is_a?(One)
+          @init_block = default_init_block
         else
-          @init_block = default_init_block_one
+          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block
         end
       end
 
@@ -104,19 +101,15 @@ module Nested
       @before_blocks = []
       @after_blocks = []
 
-      @serializer = Serializer.new(member? ? parent.serializer.includes : [])
+      @serializer = initialize_serializer_factory
     end
 
-    def singleton?
-      @singleton == true
+    def initialize_serializer_factory
+      Serializer.new([])
     end
 
-    def member?
-      !singleton? && !collection?
-    end
-
-    def collection?
-      @collection == true
+    def to_route_part
+      "/#{@name}"
     end
 
     def before(&block)
@@ -127,18 +120,6 @@ module Nested
     def after(&block)
       @after_blocks << block
       self
-    end
-
-    def type
-      if singleton?
-        :singleton
-      elsif member?
-        :member
-      elsif collection?
-        :collection
-      else
-        raise "undefined"
-      end
     end
 
     def serialize(*args)
@@ -164,13 +145,7 @@ module Nested
     def route(action=nil)
       "".tap do |r|
         r << @parent.route if @parent
-
-        if singleton? || collection?
-          r << "/#{@name}"
-        else
-          r << "/:#{@name}_id"
-        end
-
+        r << to_route_part
         r << "/#{action}" if action
       end
     end
@@ -192,61 +167,18 @@ module Nested
     end
 
     def singleton_if(resource_if_block, name, init_block=nil, &block)
-      child_resource(name, true, false, resource_if_block, init_block, &(block||Proc.new{ }))
+      child_resource(name, Singleton, resource_if_block, init_block, &block)
     end
 
-    def many(name, init_block=nil, &block)
-      many_if(PROC_TRUE, name, init_block, &block)
-    end
-
-    def many_if(resource_if_block, name, init_block=nil, &block)
-      child_resource(name, false, true, resource_if_block, init_block, &(block||Proc.new{ }))
-    end
-
-    def one(&block)
-      one_if(PROC_TRUE, &block)
-    end
-
-    def one_if(resource_if_block, &block)
-      child_resource(self.name.to_s.singularize.to_sym, false, false, resource_if_block, nil, &(block||Proc.new{ }))
-    end
-
-    def child_resource(name, singleton, collection, resource_if_block, init_block, &block)
-       Resource.new(@sinatra, name, singleton, collection, self, resource_if_block, init_block)
-        .tap{|r| r.instance_eval(&block)}
+    def child_resource(name, clazz, resource_if_block, init_block, &block)
+       clazz.new(@sinatra, name, self, resource_if_block, init_block)
+        .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
         .tap{|r| @resources << r}
     end
 
-    def default_init_block_singleton
-      if parent
-        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
-      else
-        Proc.new { nil }
-      end
-    end
-
-    def default_init_block_many
-      if parent
-        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
-      else
-        Proc.new { nil }
-      end
-    end
-
-    def default_init_block_one
-      if parent
-        Proc.new do
-          instance_variable_get("@#{@__resource.parent.instance_variable_name}")
-            .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
-            .first
-        end
-      else
-        Proc.new { nil }
-      end
-    end
 
     def instance_variable_name
-      member? ? parent.name.to_s.singularize.to_sym : @name
+      @name
     end
 
     def parents
@@ -269,21 +201,9 @@ module Nested
 
       raise "resource_if is false for resource: #{self.name} " unless sinatra.instance_exec(&@resource_if_block)
 
-      init_block = if @init_block
-        @init_block
-      else
-        if singleton?
-          default_init_block_singleton
-        elsif collection?
-          default_init_block_many
-        else
-          default_init_block_one
-        end
-      end
-
       @before_blocks.each{|e| sinatra.instance_exec(&e)}
 
-      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&init_block))
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&@init_block))
 
       @after_blocks.each{|e| sinatra.instance_exec(&e)}
     end
@@ -353,7 +273,7 @@ module Nested
     end
 
     def sinatra_response_create_data(sinatra, response, method)
-      data = if response && (collection? || response.is_a?(Array)) && method != :post
+      data = if response && (is_a?(Many) || response.is_a?(Array)) && method != :post
         response.to_a.map{|e| sinatra.instance_exec(e, &@serializer.serialize) }
       else
         sinatra.instance_exec(response, &@serializer.serialize)
@@ -426,6 +346,65 @@ module Nested
       end
     end
   end
+
+  class Singleton < Resource
+    include WithMany
+
+    def default_init_block
+      if parent
+        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
+      else
+        Proc.new { nil }
+      end
+    end
+  end
+
+  class Many < Resource
+    def one(&block)
+      one_if(PROC_TRUE, &block)
+    end
+
+    def one_if(resource_if_block, &block)
+      child_resource(self.name.to_s.singularize.to_sym, One, resource_if_block, nil, &block)
+    end
+
+    def default_init_block
+      if parent
+        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
+      else
+        Proc.new { nil }
+      end
+    end
+  end
+
+  class One < Resource
+    include WithMany
+
+    def initialize_serializer_factory
+      Serializer.new(parent.serializer.includes)
+    end
+
+    def default_init_block
+      if parent
+        Proc.new do
+          instance_variable_get("@#{@__resource.parent.instance_variable_name}")
+            .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
+            .first
+        end
+      else
+        Proc.new { nil }
+      end
+    end
+
+    def to_route_part
+      "/:#{@name}_id"
+    end
+
+    def instance_variable_name
+      parent.name.to_s.singularize.to_sym
+    end
+  end
+
 
   module Angular
     def self.extended(base)
@@ -557,7 +536,7 @@ module Nested
       all = resource.self_and_parents.reverse
 
       all.each do |e|
-        if e.collection?
+        if e.is_a?(Many)
           if e == all.last
             if method == :post
               arr << e.name.to_s.singularize.to_sym
@@ -565,7 +544,7 @@ module Nested
               arr << e.name
             end
           else
-            arr << e.name unless all[all.index(e) + 1].member?
+            arr << e.name unless all[all.index(e) + 1].is_a?(One)
           end
         else
           arr << e.name
@@ -579,7 +558,7 @@ module Nested
 
     def self.function_arguments(resource)
       resource
-        .self_and_parents.select{|r| r.member?}
+        .self_and_parents.select{|r| r.is_a?(One)}
         .map{|r| r.name || r.parent.name}
         .map(&:to_s)
         .map(&:singularize)
@@ -596,19 +575,19 @@ module Nested
       end
     end
     def singleton(name, init_block=nil, &block)
-      singleton_if(Nested::Resource::PROC_TRUE, name, init_block, &block)
+      singleton_if(PROC_TRUE, name, init_block, &block)
     end
     def singleton_if(resource_if_block, name, init_block=nil, &block)
-      create_resource(name, true, false, resource_if_block, init_block, &block)
+      create_resource(name, Nested::Singleton, resource_if_block, init_block, &block)
     end
     def many(name, init_block=nil, &block)
-      many_if(Nested::Resource::PROC_TRUE, name, init_block, &block)
+      many_if(PROC_TRUE, name, init_block, &block)
     end
     def many_if(resource_if_block, name, init_block=nil, &block)
-      create_resource(name, false, true, resource_if_block, init_block, &block)
+      create_resource(name, Nested::Many, resource_if_block, init_block, &block)
     end
-    def create_resource(name, singleton, collection, resource_if_block, init_block, &block)
-      ::Nested::Resource.new(self, name, singleton, collection, nil, resource_if_block, init_block).tap{|r| r.instance_eval(&block) }
+    def create_resource(name, clazz, resource_if_block, init_block, &block)
+      clazz.new(self, name, nil, resource_if_block, init_block).tap{|r| r.instance_eval(&block) }
     end
   end
 

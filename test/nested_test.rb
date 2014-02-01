@@ -14,24 +14,6 @@ class NestedTest < Test::Unit::TestCase
     @sinatra = mock
   end
 
-  def test_is_singleton
-    assert_equal true, singleton(:project).singleton?
-    assert_equal false, many(:projects).singleton?
-    assert_equal false, many(:projects).one.singleton?
-  end
-
-  def test_is_collection
-    assert_equal true, many(:projects).collection?
-    assert_equal false, many(:projects).one.collection?
-    assert_equal false, singleton(:project).collection?
-  end
-
-  def test_is_member
-    assert_equal true, many(:projects).one.member?
-    assert_equal false, many(:projects).member?
-    assert_equal false, singleton(:project).member?
-  end
-
   def test_serialize
     serializer = mock()
 
@@ -83,89 +65,86 @@ class NestedTest < Test::Unit::TestCase
 
   def test_singleton
     resource = singleton(:project)
-    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:statistic, Nested::Singleton, Nested::PROC_TRUE, nil)
     resource.singleton(:statistic)
 
     resource = many(:projects)
-    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:statistic, Nested::Singleton, Nested::PROC_TRUE, nil)
     resource.singleton(:statistic)
 
     resource = many(:projects).one
-    resource.expects(:child_resource).with(:statistic, true, false, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:statistic, Nested::Singleton, Nested::PROC_TRUE, nil)
     resource.singleton(:statistic)
   end
 
   def test_one
     resource = many(:projects)
-    resource.expects(:child_resource).with(:project, false, false, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:project, Nested::One, Nested::PROC_TRUE, nil)
     resource.one
   end
 
   def test_many
     resource = singleton(:project)
-    resource.expects(:child_resource).with(:statistics, false, true, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:statistics, Nested::Many, Nested::PROC_TRUE, nil)
     resource.many(:statistics)
 
     resource = singleton(:project).many(:statistics).one
-    resource.expects(:child_resource).with(:entries, false, true, Nested::Resource::PROC_TRUE, nil)
+    resource.expects(:child_resource).with(:entries, Nested::Many, Nested::PROC_TRUE, nil)
     resource.many(:entries)
   end
 
   def test_get
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:get, nil, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:get, nil, Nested::PROC_TRUE)
     resource.get
 
-    resource.expects(:create_sinatra_route).with(:get, :action, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:get, :action, Nested::PROC_TRUE)
     resource.get :action
   end
 
   def test_post
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:post, nil, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:post, nil, Nested::PROC_TRUE)
     resource.post
 
-    resource.expects(:create_sinatra_route).with(:post, :action, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:post, :action, Nested::PROC_TRUE)
     resource.post :action
   end
 
   def test_put
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:put, nil, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:put, nil, Nested::PROC_TRUE)
     resource.put
 
-    resource.expects(:create_sinatra_route).with(:put, :action, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:put, :action, Nested::PROC_TRUE)
     resource.put :action
   end
 
   def test_delete
     resource = singleton(:project)
 
-    resource.expects(:create_sinatra_route).with(:delete, nil, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:delete, nil, Nested::PROC_TRUE)
     resource.delete
 
-    resource.expects(:create_sinatra_route).with(:delete, :action, Nested::Resource::PROC_TRUE)
+    resource.expects(:create_sinatra_route).with(:delete, :action, Nested::PROC_TRUE)
     resource.delete :action
   end
 
   def test_child_resource
-    resource = many(:projects).child_resource(:statistic, false, false, Proc.new{ true}, nil) { }
+    resource = many(:projects).child_resource(:statistic, Nested::One, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
-    assert_equal false, resource.instance_variable_get("@singleton")
-    assert_equal false, resource.instance_variable_get("@collection")
+    assert_equal true, resource.is_a?(Nested::One)
 
-    resource = singleton(:project).child_resource(:statistic, true, false, Proc.new{ true}, nil) { }
+    resource = singleton(:project).child_resource(:statistic, Nested::Singleton, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
-    assert_equal true, resource.instance_variable_get("@singleton")
-    assert_equal false, resource.instance_variable_get("@collection")
+    assert_equal true, resource.is_a?(Nested::Singleton)
 
-    resource = singleton(:project).child_resource(:statistic, false, true, Proc.new{ true}, nil) { }
+    resource = singleton(:project).child_resource(:statistic, Nested::Many, Proc.new{ true}, nil) { }
     assert_equal :statistic, resource.name
-    assert_equal false, resource.instance_variable_get("@singleton")
-    assert_equal true, resource.instance_variable_get("@collection")
+    assert_equal true, resource.is_a?(Nested::Many)
   end
 
   def test_instance_variable_name
