@@ -1,4 +1,5 @@
 require "json"
+require "sinatra/base"
 
 module Nested
 
@@ -73,8 +74,20 @@ module Nested
     end
   end
 
+  module WithSingleton
+    def singleton(name, init_block=nil, &block)
+      singleton_if(PROC_TRUE, name, init_block, &block)
+    end
+
+    def singleton_if(resource_if_block, name, init_block=nil, &block)
+      child_resource(name, Singleton, resource_if_block, init_block, &block)
+    end
+  end
+
   class Resource
-    attr_reader :name, :parent, :actions, :resources, :serializer, :init_block
+    attr_reader :name, :parent, :actions, :resources, :serializer, :init_block, :sinatra
+
+    include WithSingleton
 
     def initialize(sinatra, name, parent, resource_if_block, init_block)
       raise "resource must be given a name" unless name
@@ -106,6 +119,12 @@ module Nested
 
     def initialize_serializer_factory
       Serializer.new([])
+    end
+
+    def child_resource(name, clazz, resource_if_block, init_block, &block)
+       clazz.new(@sinatra, name, self, resource_if_block, init_block)
+        .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
+        .tap{|r| @resources << r}
     end
 
     def to_route_part
@@ -161,21 +180,6 @@ module Nested
         end
       end
     end
-
-    def singleton(name, init_block=nil, &block)
-      singleton_if(PROC_TRUE, name, init_block, &block)
-    end
-
-    def singleton_if(resource_if_block, name, init_block=nil, &block)
-      child_resource(name, Singleton, resource_if_block, init_block, &block)
-    end
-
-    def child_resource(name, clazz, resource_if_block, init_block, &block)
-       clazz.new(@sinatra, name, self, resource_if_block, init_block)
-        .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
-        .tap{|r| @resources << r}
-    end
-
 
     def instance_variable_name
       @name
@@ -328,16 +332,16 @@ module Nested
           context_arr << "method: #{method}"
           context_arr << "action: #{action}"
 
-          context_arr << "resource: #{resource.name} (#{resource.type})"
+          context_arr << "resource: #{resource.name} (#{resource.class.name})"
           resource_object = instance_variable_get("@#{resource.instance_variable_name}")
           context_arr << "@#{resource.instance_variable_name}: #{resource_object.inspect}"
 
           parent = resource.try(:parent)
 
           if parent
-            context_arr << "parent: #{parent.try(:name)} (#{parent.try(:type)})"
-            parent_object = instance_variable_get("@#{parent.try(:instance_variable_name)}")
-            context_arr << "@#{parent.try(:instance_variable_name)}: #{parent_object.inspect}"
+            context_arr << "parent: #{parent.name} (#{parent.class.name})"
+            parent_object = instance_variable_get("@#{parent.instance_variable_name}")
+            context_arr << "@#{parent.instance_variable_name}: #{parent_object.inspect}"
           end
 
           puts context_arr.join("\n")
@@ -405,122 +409,118 @@ module Nested
     end
   end
 
-
   module Angular
-    def self.extended(base)
-      base.send(:extend, Nested::Angular::Sinatra)
-    end
+    def self.extended(clazz)
+      (class << clazz; self; end).instance_eval do
+        attr_accessor :angular_config
+      end
+      clazz.angular_config = {}
 
-    module Sinatra
-      # def create_resource(name, singleton, collection, &block)
-      def create_resource(*args, &block)
-        angularize(super)
+      def clazz.angular(opts={})
+        @angular_config.merge!(opts)
       end
 
-      def nested_angular_config(config=nil)
-        if config
-          @nested_angular_config = config
-        else
-          @nested_angular_config ||= {}
-        end
+      def child_resource(*args, &block)
+        Helper::angularize(self, super)
       end
-
     end
 
-    def angular_add_functions(js, resource)
-      resource.actions.each do |e|
-        method, action, block = e.values_at :method, :action, :block
-        block_args = block.parameters.map(&:last)
+    module Helper
+      def self.angular_add_functions(app, js, resource)
+        resource.actions.each do |e|
+          method, action, block = e.values_at :method, :action, :block
+          block_args = block.parameters.map(&:last)
 
-        fun_name = Nested::JsUtil::generate_function_name(resource, method, action)
+          fun_name = Nested::JsUtil::generate_function_name(resource, method, action)
 
-        args = Nested::JsUtil::function_arguments(resource)
+          args = Nested::JsUtil::function_arguments(resource)
 
-        route_args = args.inject({}) do |memo, e|
-          idx = args.index(e)
-          memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : (values[#{idx}].id || values[#{idx}]))+'"
-          memo
+          route_args = args.inject({}) do |memo, e|
+            idx = args.index(e)
+            memo[:"#{e}_id"] = "'+(typeof(values[#{idx}]) == 'number' ? values[#{idx}].toString() : (values[#{idx}].id || values[#{idx}]))+'"
+            memo
+          end
+          route = "#{app.config[:prefix]}" + resource.route_replace(resource.route(action), route_args)
+          when_args = args.map{|a| "$q.when(#{a})"}
+
+          js << "  impl.#{fun_name}Url = function(#{args.join(',')}){"
+          js << "    var deferred = $q.defer()"
+          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+          js << "      deferred.resolve('#{route}')"
+          js << "    })"
+          js << "    return deferred.promise"
+          js << "  }"
+
+          if [:get, :delete].include?(method)
+            args << "data" if !block_args.empty?
+
+            js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+            js << "    var deferred = $q.defer()"
+            js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+            js << "      $http({"
+            js << "         method: '#{method}', "
+            js << ("         url: '#{route}'" + (block_args.empty? ? "" : ","))
+            js << "         params: data" unless block_args.empty?
+            js << "      })"
+            js << "        .success(function(responseData){"
+            js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+            js << "        })"
+            js << "        .error(function(){ deferred.reject() })"
+            js << "    });"
+            js << "    return deferred.promise"
+            js << "  }"
+          elsif method == :post
+            js << "  impl.#{fun_name} = function(#{(args+['data']).join(',')}){"
+            js << "    var deferred = $q.defer()"
+            js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+            js << "      $http({method: '#{method}', url: '#{route}', data: data})"
+            js << "        .success(function(responseData){"
+            js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+            js << "        })"
+            js << "        .error(function(){ deferred.reject() })"
+            js << "    });"
+            js << "    return deferred.promise"
+            js << "  }"
+          elsif method == :put
+            args << "data" if args.empty? || !block_args.empty?
+
+            js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+            js << "    var deferred = $q.defer()"
+            js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+            js << "      $http({method: '#{method}', url: '#{route}', data: #{args.last}})"
+            js << "        .success(function(responseData){"
+            js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+            js << "        })"
+            js << "        .error(function(){ deferred.reject() })"
+            js << "    });"
+            js << "    return deferred.promise"
+            js << "  }"
+          end
         end
-        route = "#{self.nested_config[:prefix]}" + resource.route_replace(resource.route(action), route_args)
-        when_args = args.map{|a| "$q.when(#{a})"}
 
-        js << "  impl.#{fun_name}Url = function(#{args.join(',')}){"
-        js << "    var deferred = $q.defer()"
-        js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
-        js << "      deferred.resolve('#{route}')"
-        js << "    })"
-        js << "    return deferred.promise"
-        js << "  }"
-
-        if [:get, :delete].include?(method)
-          args << "data" if !block_args.empty?
-
-          js << "  impl.#{fun_name} = function(#{args.join(',')}){"
-          js << "    var deferred = $q.defer()"
-          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
-          js << "      $http({"
-          js << "         method: '#{method}', "
-          js << ("         url: '#{route}'" + (block_args.empty? ? "" : ","))
-          js << "         params: data" unless block_args.empty?
-          js << "      })"
-          js << "        .success(function(responseData){"
-          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
-          js << "        })"
-          js << "        .error(function(){ deferred.reject() })"
-          js << "    });"
-          js << "    return deferred.promise"
-          js << "  }"
-        elsif method == :post
-          js << "  impl.#{fun_name} = function(#{(args+['data']).join(',')}){"
-          js << "    var deferred = $q.defer()"
-          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
-          js << "      $http({method: '#{method}', url: '#{route}', data: data})"
-          js << "        .success(function(responseData){"
-          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
-          js << "        })"
-          js << "        .error(function(){ deferred.reject() })"
-          js << "    });"
-          js << "    return deferred.promise"
-          js << "  }"
-        elsif method == :put
-          args << "data" if args.empty? || !block_args.empty?
-
-          js << "  impl.#{fun_name} = function(#{args.join(',')}){"
-          js << "    var deferred = $q.defer()"
-          js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
-          js << "      $http({method: '#{method}', url: '#{route}', data: #{args.last}})"
-          js << "        .success(function(responseData){"
-          js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
-          js << "        })"
-          js << "        .error(function(){ deferred.reject() })"
-          js << "    });"
-          js << "    return deferred.promise"
-          js << "  }"
-        end
+        resource.resources.each {|r| angular_add_functions(app, js, r) }
       end
 
-      resource.resources.each {|r| angular_add_functions(js, r) }
-    end
+      def self.angularize(app, resource)
+        js = []
 
-    def angularize(resource)
-      js = []
+        module_name = "nested_#{resource.name}".camelcase(:lower)
 
-      module_name = "nested_#{resource.name}".camelcase(:lower)
+        js << "angular.module('#{module_name}#{app.angular_config[:service_suffix]}', [])"
+        js << ".factory('#{resource.name.to_s.camelcase.capitalize}#{app.angular_config[:service_suffix]}', function($http, $q){"
 
-      js << "angular.module('#{module_name}#{nested_angular_config[:service_suffix]}', [])"
-      js << ".factory('#{resource.name.to_s.camelcase.capitalize}#{nested_angular_config[:service_suffix]}', function($http, $q){"
+        js << "  var impl = {}"
+        angular_add_functions(app, js, resource)
+        js << "  return impl"
 
-      js << "  var impl = {}"
-      angular_add_functions(js, resource)
-      js << "  return impl"
+        js << "})"
 
-      js << "})"
+        response_transform = app.angular_config[:response_transform] || ->(code){ code }
 
-      response_transform = nested_angular_config[:response_transform] || ->(code){ code }
-
-      get "/#{resource.name}.js" do
-        content_type :js
-        instance_exec(js.join("\n"), &response_transform)
+        app.sinatra.get "/#{resource.name}.js" do
+          content_type :js
+          instance_exec(js.join("\n"), &response_transform)
+        end
       end
     end
   end
@@ -566,29 +566,33 @@ module Nested
     end
   end
 
-  module Sinatra
-    def nested_config(config=nil)
-      if config
-        @nested_config = config
-      else
-        @nested_config ||= {}
+  class App
+    def self.inherited(clazz)
+      (class << clazz; self; end).instance_eval do
+        attr_accessor :sinatra
       end
+      clazz.sinatra = Class.new(Sinatra::Base)
+      clazz.instance_variable_set("@config", {})
     end
-    def singleton(name, init_block=nil, &block)
-      singleton_if(PROC_TRUE, name, init_block, &block)
-    end
-    def singleton_if(resource_if_block, name, init_block=nil, &block)
-      create_resource(name, Nested::Singleton, resource_if_block, init_block, &block)
-    end
-    def many(name, init_block=nil, &block)
-      many_if(PROC_TRUE, name, init_block, &block)
-    end
-    def many_if(resource_if_block, name, init_block=nil, &block)
-      create_resource(name, Nested::Many, resource_if_block, init_block, &block)
-    end
-    def create_resource(name, clazz, resource_if_block, init_block, &block)
-      clazz.new(self, name, nil, resource_if_block, init_block).tap{|r| r.instance_eval(&block) }
-    end
-  end
 
+    def self.child_resource(name, clazz, resource_if_block, init_block, &block)
+       clazz.new(sinatra, name, nil, resource_if_block, init_block)
+            .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
+    end
+
+    def self.before(&block)
+      sinatra.before(&block)
+    end
+
+    def self.after(&block)
+      sinatra.after(&block)
+    end
+
+    def self.config(opts={})
+      @config.tap{|c| c.merge!(opts)}
+    end
+
+    extend WithSingleton
+    extend WithMany
+  end
 end
