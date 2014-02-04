@@ -47,7 +47,7 @@ Congrats! You just created your first nested API. Checkout the other sections to
 
 ## Nested:App
 
-In nested you implement your API as a normal ruby class which inherit from Nested::App
+In nested you implement your API as a normal ruby class which inherits from Nested::App
 
 ```
 class MyApi < Nested::App
@@ -170,7 +170,7 @@ class MyApi < Nested::App
 end
 ```
 
-The model is available in all http verb block. Except inpost. The post block has to return a new model.
+The model is available in all http verb blocks. Except in post. The post block has to return a new model.
 
 ```
 class MyApi < Nested::App
@@ -182,7 +182,7 @@ class MyApi < Nested::App
 end
 ```
 
-Nested gives you access to http parameters through the params method as known from other frameworks and addition to this a useful shorthand.
+Nested gives you access to http parameters through the params method as known from other frameworks and in addition to this a useful shorthand.
 
 ```
 class MyApi < Nested::App
@@ -200,4 +200,49 @@ class MyApi < Nested::App
     end
   end
 end
+```
+## Serialize
+
+Nested does not automatically serialize  and expose a attributes of the underlying model as resource fields. You have to list them explicitly. This allows you fine grain control over what and when something is exposed and gets you a decoupling from your model layer as well.
+
+Serialize a single field
+
+```
+class MyApi < Nested::App
+  singleton :user do
+    serialize :email
+    get
+  end
+```
+
+Serialize multiple fields
+
+```
+class MyApi < Nested::App
+  singleton :user do
+    serialize :id, :email, :username
+    get
+  end
+```
+
+You can invoke serialize multiple times.
+
+```
+class MyApi < Nested::App
+  singleton :user do
+    serialize :id, :email
+    serialize :username
+    get
+  end
+```
+
+In the previous examples we always serialize a 1:1 field value from the model. Sometimes you want to transform the model value or serialize some completly synthetic fields. This can be easily accomplished by passing a one entry Hash to serialize. The key will be used as serialized field name. The value of the hash is expected to be a block which gets invoked with the model as argument. The return value of the block will be used a serialization value.
+
+```
+class MyApi < Nested::App
+  singleton :user do
+    serialize :id, :email
+    serialize username: ->(user){ "*** #{user.username} ***" }
+    get
+  end
 ```
