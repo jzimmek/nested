@@ -213,6 +213,7 @@ class MyApi < Nested::App
     serialize :email
     get
   end
+end
 ```
 
 Serialize multiple fields
@@ -223,6 +224,7 @@ class MyApi < Nested::App
     serialize :id, :email, :username
     get
   end
+end
 ```
 
 You can invoke serialize multiple times.
@@ -234,6 +236,7 @@ class MyApi < Nested::App
     serialize :username
     get
   end
+end
 ```
 
 In the previous examples we always serialize a 1:1 field value from the model. Sometimes you want to transform the model value or serialize some completly synthetic fields. This can be easily accomplished by passing a one entry Hash to serialize. The key will be used as serialized field name. The value of the hash is expected to be a block which gets invoked with the model as argument. The return value of the block will be used a serialization value.
@@ -245,4 +248,5 @@ class MyApi < Nested::App
     serialize username: ->(user){ "*** #{user.username} ***" }
     get
   end
+end
 ```
