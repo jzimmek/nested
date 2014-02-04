@@ -25,6 +25,8 @@ module Nested
     def serialize
       this = self
       ->(obj) do
+        obj = ::HashWithIndifferentAccess.new(obj) if obj.is_a?(Hash)
+
         excludes = this.excludes.select{|e| instance_exec(&e.condition)}
 
         this.includes.reject{|e| excludes.detect{|e2| e2.name == e.name}}.inject({}) do |memo, field|

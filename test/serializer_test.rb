@@ -28,4 +28,28 @@ class SerializerTest < Test::Unit::TestCase
     assert_equal :name, ser.excludes[0].name
   end
 
+  def test_serialize
+    ser = Nested::Serializer.new()
+    ser + :id
+
+    obj = {id: 2, name: "joe"}
+
+    assert_equal({id: 2}, obj.instance_eval(&ser.serialize))
+
+    ser + :name
+    assert_equal({id: 2, name: "joe"}, obj.instance_eval(&ser.serialize))
+  end
+
+  def test_serialize_with_symbolize_keys
+    ser = Nested::Serializer.new()
+    ser + :id
+
+    obj = {"id" => 2, "name" => "joe"}
+
+    assert_equal({id: 2}, obj.instance_eval(&ser.serialize))
+
+    ser + :name
+    assert_equal({id: 2, name: "joe"}, obj.instance_eval(&ser.serialize))
+  end
+
 end
