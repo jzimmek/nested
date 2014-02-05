@@ -14,22 +14,55 @@ class NestedTest < Test::Unit::TestCase
     @sinatra = mock
   end
 
+  def test_initialize
+    r = singleton(:project)
+
+    assert_equal :project, r.name
+    assert_equal nil, r.parent
+    assert_equal [], r.resources
+    assert_equal [], r.actions
+    assert_equal Nested::PROC_NIL, r.model_block
+
+
+    assert_equal [], r.before_blocks
+    assert_equal [], r.after_blocks
+
+    assert_equal Nested::Singleton::MODEL_BLOCK, singleton(:project, nil).model_block
+    assert_equal Nested::Many::MODEL_BLOCK, many(:projects, nil).model_block
+    assert_equal Nested::One::MODEL_BLOCK, many(:projects, nil).one.model_block
+  end
+
   def test_serialize
     serializer = mock()
 
     r = singleton(:project)
     r.stubs(:serializer).returns(serializer)
 
-    assert_equal serializer, r.serialize
+    assert_equal r, r.serialize
 
     serializer.expects(:+).with(:name)
     r.serialize :name
   end
 
+  def test_before
+    b = ->{}
+    r = singleton(:project)
+    assert_equal r, r.before(&b)
+    assert_equal [b], r.before_blocks
+  end
+
+  def test_after
+    b = ->{}
+    r = singleton(:project)
+    assert_equal r, r.after(&b)
+    assert_equal [b], r.after_blocks
+  end
+
   def test_model_block
     model_block = ->{ }
     r = singleton(:project)
-    assert_equal r, r.model(model_block)
+    assert_equal r, r.model(&model_block)
+    assert_equal model_block, r.model_block
   end
 
   def test_route_replace
@@ -183,51 +216,44 @@ class NestedTest < Test::Unit::TestCase
     # get
 
     @sinatra.expects(:send).with(:get, "/project")
-    singleton(:project).get
+    r = singleton(:project)
+    assert_equal r, r.get
 
     @sinatra.expects(:send).with(:get, "/project/action")
-    singleton(:project).get(:action)
+    r = singleton(:project)
+    assert_equal r, r.get(:action)
 
     # post
 
     @sinatra.expects(:send).with(:post, "/project")
-    singleton(:project).post
+    r = singleton(:project)
+    assert_equal r, r.post
 
     @sinatra.expects(:send).with(:post, "/project/action")
-    singleton(:project).post(:action)
+    r = singleton(:project)
+    assert_equal r, r.post(:action)
 
     # put
 
     @sinatra.expects(:send).with(:put, "/project")
-    singleton(:project).put
+    r = singleton(:project)
+    assert_equal r, r.put
 
     @sinatra.expects(:send).with(:put, "/project/action")
-    singleton(:project).put(:action)
+    r = singleton(:project)
+    assert_equal r, r.put(:action)
 
     # delete
 
     @sinatra.expects(:send).with(:delete, "/project")
-    singleton(:project).delete
+    r = singleton(:project)
+    assert_equal r, r.delete
 
     @sinatra.expects(:send).with(:delete, "/project/action")
-    singleton(:project).delete(:action)
+    r = singleton(:project)
+    assert_equal r, r.delete(:action)
   end
 
-
-  # def test_serializer
-  #   singleton!
-
-  #   @r.serialize :name
-
-  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
-  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call({name: "joe", boss: true}))
-  #   assert_equal({name: "joe"}, @r.instance_variable_get("@__serialize").call(OpenStruct.new({name: "joe"})))
-
-  #   @r.serialize :name, virtual: ->(o){ o[:name] + "!!" }
-  #   assert_equal({name: "joe", virtual: "joe!!"}, @r.instance_variable_get("@__serialize").call({name: "joe"}))
-  # end
-
-  # # ----
 
   def test_sinatra_response_type
     assert_equal :error, singleton(:project).sinatra_response_type(ActiveModel::Errors.new({}))
@@ -323,6 +349,86 @@ class NestedTest < Test::Unit::TestCase
     assert_equal ["project"], Nested::Js.function_arguments(many(:projects).one.singleton(:today))
     assert_equal [], Nested::Js.function_arguments(many(:projects).singleton(:statistic).singleton(:today))
     assert_equal ["project", "entry"], Nested::Js.function_arguments(many(:projects).one.many(:entries).one)
+  end
+
+  def test_sinatra_init
+    @sinatra.stubs(:get)
+    r = singleton(:project, ->{ {name: "joe"} }).get
+
+    r.expects(:sinatra_init_set_resource).with(@sinatra)
+    r.expects(:sinatra_init_before).with(@sinatra)
+    r.expects(:sinatra_init_set_model).with(@sinatra)
+    r.expects(:sinatra_init_after).with(@sinatra)
+
+    r.sinatra_init(@sinatra)
+
+    r.expects(:sinatra_init_set_resource).with(@sinatra)
+
+    assert_raise RuntimeError do
+      r.instance_variable_set("@resource_if_block", ->{ false })
+      r.sinatra_init(@sinatra)
+    end
+  end
+
+  def test_sinatra_init_set_resource
+    @sinatra.stubs(:get)
+    r = singleton(:project, ->{ {name: "joe"} }).get
+    r.sinatra_init_set_resource(@sinatra)
+    assert_equal r, @sinatra.instance_variable_get("@__resource")
+  end
+
+  def test_sinatra_init_set_model
+    @sinatra.stubs(:get)
+    @sinatra.instance_variable_set("@some_value", 10)
+    r = singleton(:project, ->{ {name: "joe", some_value: @some_value} }).get
+    r.sinatra_init_set_model(@sinatra)
+    assert_equal ({name: "joe", some_value: 10}), @sinatra.instance_variable_get("@project")
+
+    @sinatra.stubs(:get)
+    @sinatra.instance_variable_set("@some_value", 10)
+    @sinatra.instance_variable_set("@other_value", 2)
+
+    r = singleton(:project, ->(default){ {name: "joe", some_value: @some_value * default} }).get
+    r.stubs(:default_model_block).returns(->{ @other_value })
+    r.sinatra_init_set_model(@sinatra)
+    assert_equal ({name: "joe", some_value: 20}), @sinatra.instance_variable_get("@project")
+  end
+
+  def test_sinatra_init_before
+    @sinatra.stubs(:get)
+    before_called = false
+
+    r = singleton(:project, ->{ {name: "joe"} }).get.before(&->{ before_called = true })
+    r.sinatra_init_before(@sinatra)
+
+    assert_equal true, before_called
+  end
+
+  def test_sinatra_init_after
+    @sinatra.stubs(:get)
+    after_called = false
+
+    r = singleton(:project, ->{ {name: "joe"} }).get.after(&->{ after_called = true })
+    r.sinatra_init_after(@sinatra)
+
+    assert_equal true, after_called
+  end
+
+  def test_default_model_block
+    assert_equal Nested::Singleton::MODEL_BLOCK, singleton(:project).default_model_block
+    assert_equal Nested::Many::MODEL_BLOCK, many(:projects).default_model_block
+    assert_equal Nested::One::MODEL_BLOCK, many(:projects).one.default_model_block
+  end
+
+  def test_model
+    model_block = ->{}
+    r = singleton(:project)
+    assert_equal r, r.model(&model_block)
+    assert_equal model_block, r.instance_variable_get("@model_block")
+
+    assert_raise RuntimeError do
+      singleton(:project, ->{ 10 }).model(&->{ 20 })
+    end
   end
 
 end

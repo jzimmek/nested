@@ -3,12 +3,16 @@ module Nested
     include WithMany
     include WithModelBlock
 
-    def default_model_block
-      if parent
-        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
+    MODEL_BLOCK = Proc.new do
+      if @__resource.parent
+        instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name)
       else
-        Proc.new { nil }
+        nil
       end
+    end
+
+    def default_model_block
+      MODEL_BLOCK
     end
   end
 end

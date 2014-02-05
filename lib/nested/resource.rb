@@ -1,6 +1,6 @@
 module Nested
   class Resource
-    attr_reader :name, :parent, :actions, :resources, :serializer, :model_block, :sinatra
+    attr_reader :name, :parent, :actions, :resources, :serializer, :model_block, :sinatra, :before_blocks, :after_blocks
 
     include WithSingleton
 
@@ -42,6 +42,10 @@ module Nested
         .tap{|r| @resources << r}
     end
 
+    def default_model_block
+      raise "implement me"
+    end
+
     def to_route_part
       "/#{@name}"
     end
@@ -58,15 +62,17 @@ module Nested
 
     def serialize(*args)
       args.each {|arg| serializer + arg }
-      serializer
+      self
     end
 
     def serialize_include_if(condition, *args)
       args.each {|arg| @serializer + SerializerField.new(arg, condition) }
+      self
     end
 
     def serialize_exclude_if(condition, *args)
       args.each {|arg| @serializer - SerializerField.new(arg, condition) }
+      self
     end
 
     def route_replace(route, args)
@@ -88,10 +94,12 @@ module Nested
       instance_eval do
         define_method method do |action=nil, &block|
           send(:"#{method}_if", PROC_TRUE, action, &block)
+          self
         end
 
         define_method :"#{method}_if" do |method_if_block, action=nil, &block|
           create_sinatra_route method, action, method_if_block, &(block||proc {})
+          self
         end
       end
     end
@@ -116,14 +124,28 @@ module Nested
     end
 
     def sinatra_init(sinatra)
-      sinatra.instance_variable_set("@__resource", self)
+      sinatra_init_set_resource(sinatra)
 
       raise "resource_if is false for resource: #{self.name} " unless sinatra.instance_exec(&@resource_if_block)
 
+      sinatra_init_before(sinatra)
+      sinatra_init_set_model(sinatra)
+      sinatra_init_after(sinatra)
+    end
+
+    def sinatra_init_set_resource(sinatra)
+      sinatra.instance_variable_set("@__resource", self)
+    end
+
+    def sinatra_init_set_model(sinatra)
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(*(@model_block.parameters.empty? ? [] : [sinatra.instance_exec(&default_model_block)]), &@model_block))
+    end
+
+    def sinatra_init_before(sinatra)
       @before_blocks.each{|e| sinatra.instance_exec(&e)}
+    end
 
-      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&@model_block))
-
+    def sinatra_init_after(sinatra)
       @after_blocks.each{|e| sinatra.instance_exec(&e)}
     end
 

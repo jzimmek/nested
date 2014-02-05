@@ -29,17 +29,21 @@ module Nested
 
         excludes = this.excludes.select{|e| instance_exec(&e.condition)}
 
-        this.includes.reject{|e| excludes.detect{|e2| e2.name == e.name}}.inject({}) do |memo, field|
-          if instance_exec(&field.condition)
-            case field.name
-              when Symbol
-                memo[field.name] = obj.is_a?(Hash) ? obj[field.name] : obj.send(field.name)
-              when Hash
-                field_name, proc = field.name.to_a.first
-                memo[field_name] = instance_exec(obj, &proc)
+        if obj
+          this.includes.reject{|e| excludes.detect{|e2| e2.name == e.name}}.inject({}) do |memo, field|
+            if instance_exec(&field.condition)
+              case field.name
+                when Symbol
+                  memo[field.name] = obj.is_a?(Hash) ? obj[field.name] : obj.send(field.name)
+                when Hash
+                  field_name, proc = field.name.to_a.first
+                  memo[field_name] = instance_exec(obj, &proc)
+              end
             end
+            memo
           end
-          memo
+        else
+          nil
         end
       end
     end

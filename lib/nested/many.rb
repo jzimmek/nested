@@ -2,6 +2,14 @@ module Nested
   class Many < Resource
     include WithModelBlock
 
+    MODEL_BLOCK = Proc.new do
+      if @__resource.parent
+        instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name)
+      else
+        nil
+      end
+    end
+
     def one(&block)
       one_if(PROC_TRUE, &block)
     end
@@ -11,11 +19,7 @@ module Nested
     end
 
     def default_model_block
-      if parent
-        Proc.new{ instance_variable_get("@#{@__resource.parent.instance_variable_name}").send(@__resource.name) }
-      else
-        Proc.new { nil }
-      end
+      MODEL_BLOCK
     end
   end
 end

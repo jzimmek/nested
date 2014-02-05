@@ -38,6 +38,8 @@ class SerializerTest < Test::Unit::TestCase
 
     ser + :name
     assert_equal({id: 2, name: "joe"}, obj.instance_eval(&ser.serialize))
+
+    assert_equal(nil, nil.instance_eval(&ser.serialize))
   end
 
   def test_serialize_with_symbolize_keys

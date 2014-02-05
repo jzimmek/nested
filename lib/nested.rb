@@ -1,5 +1,6 @@
 module Nested
   PROC_TRUE = Proc.new{ true }
+  PROC_NIL = Proc.new{ nil }
 end
 
 require "json"
@@ -11,6 +12,7 @@ require "nested/redirect"
 
 require "nested/with_many"
 require "nested/with_singleton"
+require "nested/with_model_block"
 
 require "nested/resource"
 
