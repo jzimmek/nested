@@ -6,7 +6,7 @@ module Nested
       Serializer.new(parent.serializer.includes)
     end
 
-    def default_init_block
+    def default_model_block
       if parent
         Proc.new do
           instance_variable_get("@#{@__resource.parent.instance_variable_name}")

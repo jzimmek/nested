@@ -26,6 +26,12 @@ class NestedTest < Test::Unit::TestCase
     r.serialize :name
   end
 
+  def test_model_block
+    model_block = ->{ }
+    r = singleton(:project)
+    assert_equal r, r.model(model_block)
+  end
+
   def test_route_replace
     resource = many(:projects).one
 

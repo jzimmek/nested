@@ -8,8 +8,8 @@ module Nested
       clazz.instance_variable_set("@config", {})
     end
 
-    def self.child_resource(name, clazz, resource_if_block, init_block, &block)
-       clazz.new(sinatra, name, nil, resource_if_block, init_block)
+    def self.child_resource(name, clazz, resource_if_block, model_block, &block)
+       clazz.new(sinatra, name, nil, resource_if_block, model_block)
             .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
     end
 

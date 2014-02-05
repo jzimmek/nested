@@ -1,10 +1,10 @@
 module Nested
   class Resource
-    attr_reader :name, :parent, :actions, :resources, :serializer, :init_block, :sinatra
+    attr_reader :name, :parent, :actions, :resources, :serializer, :model_block, :sinatra
 
     include WithSingleton
 
-    def initialize(sinatra, name, parent, resource_if_block, init_block)
+    def initialize(sinatra, name, parent, resource_if_block, model_block)
       raise "resource must be given a name" unless name
 
       @sinatra = sinatra
@@ -16,15 +16,15 @@ module Nested
       raise "resource_if_block is nil, pass Nested::PROC_TRUE instead" unless resource_if_block
       @resource_if_block = resource_if_block
 
-      unless @init_block = init_block
+      unless @model_block = model_block
         if is_a?(One)
-          @init_block = default_init_block
+          @model_block = default_model_block
         else
-          @init_block = resource_if_block != PROC_TRUE ? parent.try(:init_block) : default_init_block
+          @model_block = resource_if_block != PROC_TRUE ? parent.try(:model_block) : default_model_block
         end
       end
 
-      raise "no init_block passed and could not lookup any parent or default init_block" unless @init_block
+      raise "no model_block passed and could not lookup any parent or default model_block" unless @model_block
 
       @before_blocks = []
       @after_blocks = []
@@ -36,8 +36,8 @@ module Nested
       Serializer.new([])
     end
 
-    def child_resource(name, clazz, resource_if_block, init_block, &block)
-       clazz.new(@sinatra, name, self, resource_if_block, init_block)
+    def child_resource(name, clazz, resource_if_block, model_block, &block)
+       clazz.new(@sinatra, name, self, resource_if_block, model_block)
         .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
         .tap{|r| @resources << r}
     end
@@ -122,7 +122,7 @@ module Nested
 
       @before_blocks.each{|e| sinatra.instance_exec(&e)}
 
-      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&@init_block))
+      sinatra.instance_variable_set("@#{self.instance_variable_name}", sinatra.instance_exec(&@model_block))
 
       @after_blocks.each{|e| sinatra.instance_exec(&e)}
     end
