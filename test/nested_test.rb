@@ -30,6 +30,18 @@ class NestedTest < Test::Unit::TestCase
     assert_equal Nested::Singleton::MODEL_BLOCK, singleton(:project, nil).model_block
     assert_equal Nested::Many::MODEL_BLOCK, many(:projects, nil).model_block
     assert_equal Nested::One::MODEL_BLOCK, many(:projects, nil).one.model_block
+
+    assert_equal true, r.instance_variable_get("@app") <= Nested::App
+  end
+
+  def test_behave
+    r = singleton(:project)
+    a = r.instance_variable_get("@app")
+    a.behavior :mybehavior do
+      get
+    end
+    @sinatra.expects(:get)
+    r.behave :mybehavior
   end
 
   def test_serialize

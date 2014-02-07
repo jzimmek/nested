@@ -4,9 +4,10 @@ module Nested
 
     include WithSingleton
 
-    def initialize(sinatra, name, parent, resource_if_block, model_block)
+    def initialize(app, sinatra, name, parent, resource_if_block, model_block)
       raise "resource must be given a name" unless name
 
+      @app = app
       @sinatra = sinatra
       @name = name
       @parent = parent
@@ -32,12 +33,16 @@ module Nested
       @serializer = initialize_serializer_factory
     end
 
+    def behave(name)
+      instance_exec(&@app.behaviors[name])
+    end
+
     def initialize_serializer_factory
       Serializer.new([])
     end
 
     def child_resource(name, clazz, resource_if_block, model_block, &block)
-       clazz.new(@sinatra, name, self, resource_if_block, model_block)
+       clazz.new(@app, @sinatra, name, self, resource_if_block, model_block)
         .tap{|r| r.instance_eval(&(block||Proc.new{ }))}
         .tap{|r| @resources << r}
     end
