@@ -73,7 +73,7 @@ class NestedTest < Test::Unit::TestCase
   def test_model_block
     model_block = ->{ }
     r = singleton(:project)
-    assert_equal r, r.model(&model_block)
+    assert_equal r, r.model(model_block)
     assert_equal model_block, r.model_block
   end
 
@@ -435,12 +435,14 @@ class NestedTest < Test::Unit::TestCase
   def test_model
     model_block = ->{}
     r = singleton(:project)
-    assert_equal r, r.model(&model_block)
+    assert_equal r, r.model(model_block)
     assert_equal model_block, r.instance_variable_get("@model_block")
 
     assert_raise RuntimeError do
-      singleton(:project, ->{ 10 }).model(&->{ 20 })
+      singleton(:project, ->{ 10 }).model(->{ 20 })
     end
+
+    many(:projects, nil).model(model_block)
   end
 
 end
