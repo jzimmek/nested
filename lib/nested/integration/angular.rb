@@ -43,15 +43,13 @@ module Nested
             js << "  }"
 
             if [:get, :delete].include?(method)
-              args << "data" if !block_args.empty?
-
-              js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+              js << "  impl.#{fun_name} = function(#{(args + ['data']).join(',')}){"
               js << "    var deferred = $q.defer()"
               js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
               js << "      $http({"
               js << "         method: '#{method}', "
-              js << ("         url: '#{route}'" + (block_args.empty? ? "" : ","))
-              js << "         params: data" unless block_args.empty?
+              js << "         url: '#{route}', "
+              js << "         params: data||{}"
               js << "      })"
               js << "        .success(function(responseData){"
               js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
@@ -60,6 +58,24 @@ module Nested
               js << "    });"
               js << "    return deferred.promise"
               js << "  }"
+
+              # args << "data" if !block_args.empty?
+
+              # js << "  impl.#{fun_name} = function(#{args.join(',')}){"
+              # js << "    var deferred = $q.defer()"
+              # js << "    $q.all([#{when_args.join(',')}]).then(function(values){"
+              # js << "      $http({"
+              # js << "         method: '#{method}', "
+              # js << ("         url: '#{route}'" + (block_args.empty? ? "" : ","))
+              # js << "         params: data" unless block_args.empty?
+              # js << "      })"
+              # js << "        .success(function(responseData){"
+              # js << "           deferred[responseData.ok ? 'resolve' : 'reject'](responseData.data)"
+              # js << "        })"
+              # js << "        .error(function(){ deferred.reject() })"
+              # js << "    });"
+              # js << "    return deferred.promise"
+              # js << "  }"
             elsif method == :post
               js << "  impl.#{fun_name} = function(#{(args+['data']).join(',')}){"
               js << "    var deferred = $q.defer()"
