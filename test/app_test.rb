@@ -27,6 +27,11 @@ class NestedTest < Test::Unit::TestCase
     assert_equal ({:test => b}), app.behavior(:test, &b).instance_variable_get("@behaviors")
   end
 
+  def test_condition
+    b = ->{}
+    assert_equal ({:test => b}), app.condition(:test, b).instance_variable_get("@conditions")
+  end
+
   def test__before
     a = app
 

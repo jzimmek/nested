@@ -15,7 +15,7 @@ module Nested
     end
 
     def one_if(resource_if_block, &block)
-      child_resource(self.name.to_s.singularize.to_sym, One, resource_if_block, nil, &block)
+      child_resource(self.name.to_s.singularize.to_sym, One, resource_if_block.is_a?(Symbol) ? @app.conditions[resource_if_block] : resource_if_block, nil, &block)
     end
 
     def default_model_block

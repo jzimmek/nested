@@ -2,15 +2,26 @@ module Nested
   class App
     def self.inherited(clazz)
       (class << clazz; self; end).instance_eval do
-        attr_accessor :sinatra, :behaviors
+        attr_accessor :sinatra, :behaviors, :conditions
       end
       clazz.sinatra = Class.new(Sinatra::Base)
       clazz.instance_variable_set("@config", {})
       clazz.instance_variable_set("@behaviors", {})
+      clazz.instance_variable_set("@conditions", {})
     end
 
     def self.behavior(name, &block)
       @behaviors[name] = block
+      self
+    end
+
+    def self.condition(name, block)
+      @conditions[name] = block
+
+      @sinatra.send(:define_method, :"#{name}?") do
+        instance_exec(&block)
+      end
+
       self
     end
 

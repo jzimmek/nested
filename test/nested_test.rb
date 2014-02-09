@@ -445,4 +445,11 @@ class NestedTest < Test::Unit::TestCase
     many(:projects, nil).model(model_block)
   end
 
+  # def test_conditions
+  #   r = singleton(:project)
+  #   app = r.instance_variable_get("@app")
+  #   app.condition :mycondition, ->{ true }
+  #   assert_equal true, app.sinatra.new.mycondition?
+  # end
+
 end

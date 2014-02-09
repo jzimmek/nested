@@ -71,12 +71,12 @@ module Nested
     end
 
     def serialize_include_if(condition, *args)
-      args.each {|arg| @serializer + SerializerField.new(arg, condition) }
+      args.each {|arg| @serializer + SerializerField.new(arg, condition.is_a?(Symbol) ? @app.conditions[condition] : condition) }
       self
     end
 
     def serialize_exclude_if(condition, *args)
-      args.each {|arg| @serializer - SerializerField.new(arg, condition) }
+      args.each {|arg| @serializer - SerializerField.new(arg, condition.is_a?(Symbol) ? @app.conditions[condition] : condition) }
       self
     end
 
@@ -103,7 +103,7 @@ module Nested
         end
 
         define_method :"#{method}_if" do |method_if_block, action=nil, &block|
-          create_sinatra_route method, action, method_if_block, &(block||proc {})
+          create_sinatra_route method, action, method_if_block.is_a?(Symbol) ? @app.conditions[method_if_block] : method_if_block, &(block||proc {})
           self
         end
       end
@@ -155,36 +155,37 @@ module Nested
     end
 
     def sinatra_exec_get_block(sinatra, &block)
-      sinatra_init_data(:get, sinatra, &block)
+      # sinatra_init_data(:get, sinatra, &block)
       sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
     def sinatra_exec_delete_block(sinatra, &block)
-      sinatra_init_data(:delete, sinatra, &block)
+      # sinatra_init_data(:delete, sinatra, &block)
       sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
-    def sinatra_init_data(method, sinatra, &block)
-      raw_data = if [:put, :post].include?(method)
-        sinatra.request.body.rewind
-        HashWithIndifferentAccess.new(JSON.parse(sinatra.request.body.read))
-      elsif [:get, :delete].include?(method)
-        sinatra.params
-      else
-        {}
-      end
+    # def sinatra_init_data(method, sinatra, &block)
+    #   raw_data = if [:put, :post].include?(method)
+    #     sinatra.request.body.rewind
+    #     body = sinatra.request.body.read
+    #     HashWithIndifferentAccess.new(JSON.parse(body))
+    #   elsif [:get, :delete].include?(method)
+    #     sinatra.params
+    #   else
+    #     {}
+    #   end
 
-      sinatra.instance_variable_set("@__raw_data", raw_data)
-      sinatra.instance_variable_set("@__data", raw_data.values_at(*block.parameters.map(&:last)))
-    end
+    #   sinatra.instance_variable_set("@__raw_data", raw_data)
+    #   sinatra.instance_variable_set("@__data", raw_data.values_at(*block.parameters.map(&:last)))
+    # end
 
     def sinatra_exec_put_block(sinatra, &block)
-      sinatra_init_data(:put, sinatra, &block)
+      # sinatra_init_data(:put, sinatra, &block)
       sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
     end
 
     def sinatra_exec_post_block(sinatra, &block)
-      sinatra_init_data(:post, sinatra, &block)
+      # sinatra_init_data(:post, sinatra, &block)
       res = sinatra.instance_exec(*sinatra.instance_variable_get("@__data"), &block)
       sinatra.instance_variable_set("@#{self.instance_variable_name}", res)
       # TODO: do we need to check for existing variables here?
@@ -240,6 +241,20 @@ module Nested
       {data: sinatra_errors_to_hash(errors), ok: false}
     end
 
+    def sinatra_init_data_extract_body(sinatra)
+      JSON.parse(sinatra.request.body.read)
+    end
+
+    def sinatra_init_data(sinatra, method, &block)
+      if [:put, :post].include?(method)
+        sinatra.request.body.rewind
+        sinatra.params.merge! HashWithIndifferentAccess.new(sinatra_init_data_extract_body(sinatra))
+      end
+
+      sinatra.instance_variable_set("@__raw_data", HashWithIndifferentAccess.new(sinatra.params))
+      sinatra.instance_variable_set("@__data", HashWithIndifferentAccess.new(sinatra.params).values_at(*block.parameters.map(&:last)))
+    end
+
     def create_sinatra_route(method, action, method_if_block, &block)
       @actions << {method: method, action: action, block: block}
 
@@ -259,6 +274,8 @@ module Nested
         begin
           content_type :json
 
+          resource.sinatra_init_data(self, method, &block)
+
           resource.self_and_parents.reverse.each do |res|
             res.sinatra_init(self)
           end
@@ -273,21 +290,31 @@ module Nested
           context_arr << "route: #{route}"
           context_arr << "method: #{method}"
           context_arr << "action: #{action}"
+          context_arr << "params: #{params.inspect}"
+          context_arr << "__raw_data: #{@__raw_data.inspect}"
+          context_arr << "__data: #{@__data.inspect}"
+
 
           context_arr << "resource: #{resource.name} (#{resource.class.name})"
           resource_object = instance_variable_get("@#{resource.instance_variable_name}")
           context_arr << "@#{resource.instance_variable_name}: #{resource_object.inspect}"
 
-          parent = resource.try(:parent)
-
-          if parent
+          resource.parents.each do |parent|
             context_arr << "parent: #{parent.name} (#{parent.class.name})"
             parent_object = instance_variable_get("@#{parent.instance_variable_name}")
             context_arr << "@#{parent.instance_variable_name}: #{parent_object.inspect}"
           end
 
+          # parent = resource.try(:parent)
+
+          # if parent
+          #   context_arr << "parent: #{parent.name} (#{parent.class.name})"
+          #   parent_object = instance_variable_get("@#{parent.instance_variable_name}")
+          #   context_arr << "@#{parent.instance_variable_name}: #{parent_object.inspect}"
+          # end
+
           puts context_arr.join("\n")
-          raise e
+          puts e.message
         end
       end
     end

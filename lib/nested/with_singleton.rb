@@ -5,7 +5,7 @@ module Nested
     end
 
     def singleton_if(resource_if_block, name, model_block=nil, &block)
-      child_resource(name, Singleton, resource_if_block, model_block, &block)
+      child_resource(name, Singleton, resource_if_block.is_a?(Symbol) ? @app.conditions[resource_if_block] : resource_if_block, model_block, &block)
     end
   end
 end
