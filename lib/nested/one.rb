@@ -4,9 +4,19 @@ module Nested
 
     MODEL_BLOCK = Proc.new do
       if @__resource.parent
-        instance_variable_get("@#{@__resource.parent.instance_variable_name}")
-          .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
-          .first
+        parent_model = instance_variable_get("@#{@__resource.parent.instance_variable_name}")
+
+        if parent_model.respond_to?(:where)
+          parent_model
+            .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
+            .first
+        elsif parent_model.respond_to?(:detect)
+          parent_model.detect do |r|
+            (r.is_a?(Hash) ? HashWithIndifferentAccess.new(r)[:id] : r.id).to_s == params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"]
+          end
+        else
+          nil
+        end
       else
         nil
       end
