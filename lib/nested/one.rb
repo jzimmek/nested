@@ -11,9 +11,10 @@ module Nested
             .where(id: params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"])
             .first
         elsif parent_model.respond_to?(:detect)
-          parent_model.detect do |r|
+          res = parent_model.detect do |r|
             (r.is_a?(Hash) ? HashWithIndifferentAccess.new(r)[:id] : r.id).to_s == params[:"#{@__resource.parent.name.to_s.singularize.to_sym}_id"]
           end
+          res.is_a?(Hash) ? HashWithIndifferentAccess.new(res) : res
         else
           nil
         end
